@@ -53,7 +53,7 @@ window.onload = () => { onResize(); };
 //?OBJECTS
 defObejct = (type, x, y, data) => { return { type, x, y, data }; }
 
-emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir }); }
+emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 10 }); }
 
 attractor = (x, y) => { return defObejct("attractor", x, y, { r: 10, m: 100 }); }
 
@@ -180,6 +180,7 @@ const MAP_HEIGHT = 540;
 //?GAMEDATA
 var emitters = [];
 emitters.push(emitter(400, 400, 0));
+emitters.push(emitter(800, 200, 0));
 
 var attractors = [];
 attractors.push(attractor(500, 300));
@@ -191,6 +192,7 @@ clouds.push(cloud(700, 500, 25));
 
 var recivers = [];
 recivers.push(reciver(600, 200));
+recivers.push(reciver(100, 400));
 
 var rays = [];
 
@@ -206,10 +208,7 @@ var target = { x: 0, y: 0 };
 
 //?UPDATE
 update = () => {
-    mKeysPrev = new Map(mKeys);
-    prevMPos = mPos;
-    prevClick = click;
-
+    //Handle pointing currently rotating emitter at mouse
     if (isRotating) {
         if (mKeys.get('shift')) {
             var s = 0.05;
@@ -222,7 +221,24 @@ update = () => {
         }
     }
 
-    quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(clouds).concat(recivers));
+    //Handle pointing currently rotating emitter at mouse
+    if (isMoving) {
+        if (mKeys.get('shift')) {
+            var s = 0.05;
+            var deltaPos = { x: (mPos.x - target.x) * s, y: (mPos.y - target.y) * s };
+            movingAttractor.x = target.x + deltaPos.x;
+            movingAttractor.y = target.y + deltaPos.y;
+
+        } else {
+            target = mPos;
+            movingAttractor.x = target.x;
+            movingAttractor.y = target.y;
+        }
+    }
+
+    quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers));
+
+    //Populate rays list
     rays = [];
     emitters.forEach(em => {
         var ray = { points: [{ x: em.x, y: em.y, steps: 0 }] }
@@ -234,6 +250,15 @@ update = () => {
             var p = ray.points[ray.points.length - 1];
             var maxSteps = Math.max(1, Math.floor(1 / mag(vel)));
             for (var steps = 0; steps < maxSteps; steps++) {
+
+                if (p.x < 0 || p.x > MAP_WIDTH || p.y < 0 || p.y > MAP_HEIGHT) {
+                    hasHit = true;
+                }
+
+                if (hasHit) {
+                    break;
+                }
+
                 var f = { x: 0, y: 0 };
                 var near = queryTree(quadTree, { x: p.x - 100, y: p.y - 100, w: 200, h: 200 });
 
@@ -256,22 +281,17 @@ update = () => {
                             if (d < o.data.r) {
                                 hasHit = true;
                             }
+                            break;
                         case 'reciver':
                             var d = dist(p, o);
                             if (d < o.data.r) {
                                 hasHit = true;
                             }
                             break;
+                        default:
+                            break;
                     }
                 });
-
-                if (p.x < 0 || p.x > MAP_WIDTH || p.y < 0 || p.y > MAP_HEIGHT) {
-                    hasHit = true;
-                }
-
-                if (hasHit) {
-                    break;
-                }
 
                 vel.x += f.x / PHOTON_MASS;
                 vel.y += f.y / PHOTON_MASS;
@@ -286,6 +306,42 @@ update = () => {
     });
 
 
+    //Handle emitter click
+    if (click && !prevClick) {
+        if (isRotating) {
+            isRotating = false;
+            rotatingEmitter = null;
+        } else if (!isMoving) {
+            var near = queryTree(quadTree, { x: mPos.x - 50, y: mPos.y - 50, w: 100, h: 100 });
+            var em = near.filter(o => o.type == 'emitter').find(o => {
+                var d = dist(mPos, o);
+                return d < o.data.r;
+            });
+            if (em != null) {
+                isRotating = true;
+                rotatingEmitter = em;
+            }
+        }
+
+        if (isMoving) {
+            isMoving = false;
+            movingAttractor = null;
+        } else if (!isRotating) {
+            var near = queryTree(quadTree, { x: mPos.x - 50, y: mPos.y - 50, w: 100, h: 100 });
+            var at = near.filter(o => o.type == 'attractor').find(o => {
+                var d = dist(mPos, o);
+                return d < o.data.r;
+            });
+            if (at != null) {
+                isMoving = true;
+                movingAttractor = at;
+            }
+        }
+    }
+
+    mKeysPrev = new Map(mKeys);
+    prevMPos = mPos;
+    prevClick = click;
 }
 
 //?RENDER
@@ -308,7 +364,7 @@ render = () => {
     //Render emitters
     emitters.forEach(obj => {
         ctx.beginPath();
-        ctx.arc(obj.x, obj.y, 10, 0, 2 * Math.PI);
+        ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
         ctx.fillStyle = "#FF0000";
         ctx.fill();
     });
