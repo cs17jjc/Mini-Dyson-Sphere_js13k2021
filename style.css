@@ -1,0 +1,41 @@
+body {
+    overflow: hidden;
+    align-content: center;
+}
+
+body.no-anim * {
+    animation-play-state: paused !important;
+    transition: none !important;
+}
+
+#canvas {
+    background-color: #000;
+    position: absolute;
+}
+
+#c2 {
+    background-color: black;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+#c1 {
+    background-color: rebeccapurple;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+#test {
+    background-color: red;
+    width: 10%;
+    height: 10%;
+    position: absolute;
+    animation: anim 1s ease-in-out infinite alternate;
+    display: none;
+}
