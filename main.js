@@ -146,32 +146,6 @@ queryTree = (tree, rect) => {
     return [];
 }
 
-var mPos = { x: 0, y: 0 };
-var prevMPos = { x: 0, y: 0 };
-window.onmousemove = (e) => {
-    mPos = {
-        x: (e.clientX - dspCanvRect.left) / (dspCanvRect.right - dspCanvRect.left) * rCanv.width,
-        y: (e.clientY - dspCanvRect.top) / (dspCanvRect.bottom - dspCanvRect.top) * rCanv.height
-    };
-}
-var click = false;
-var prevClick = false;
-window.onmousedown = (e) => {
-    click = true;
-}
-window.onmouseup = (e) => {
-    click = false;
-}
-
-var mKeys = new Map();
-var mKeysPrev = new Map();
-window.onkeydown = (e) => {
-    mKeys.set(e.key.toLowerCase(), true);
-}
-window.onkeyup = (e) => {
-    mKeys.set(e.key.toLowerCase(), false);
-}
-
 //?CONSTANTS
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
 const MAP_WIDTH = 960;
@@ -180,19 +154,19 @@ const MAP_HEIGHT = 540;
 //?GAMEDATA
 var emitters = [];
 emitters.push(emitter(400, 400, 0));
-emitters.push(emitter(800, 200, 0));
+emitters.push(emitter(550, 300, 0));
 
 var attractors = [];
 attractors.push(attractor(500, 300));
-attractors.push(attractor(700, 400));
+attractors.push(attractor(700, 200));
 
 var clouds = [];
-clouds.push(cloud(300, 200, 25));
-clouds.push(cloud(700, 500, 25));
+clouds.push(cloud(300, 200, 75));
+clouds.push(cloud(700, 400, 60));
 
 var recivers = [];
-recivers.push(reciver(600, 200));
-recivers.push(reciver(100, 400));
+recivers.push(reciver(100, 50));
+recivers.push(reciver(840, 450));
 
 var rays = [];
 
@@ -205,6 +179,9 @@ var rotatingEmitter = null;
 var movingAttractor = null;
 
 var target = { x: 0, y: 0 };
+
+var scale = 1;
+var wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) / 2 };
 
 //?UPDATE
 update = () => {
@@ -342,6 +319,8 @@ update = () => {
     mKeysPrev = new Map(mKeys);
     prevMPos = mPos;
     prevClick = click;
+    //scale -= 0.0001;
+    wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) / 2 };
 }
 
 //?RENDER
@@ -349,6 +328,9 @@ update = () => {
 render = () => {
     //Clear canvas
     ctx.clearRect(0, 0, rCanv.width, rCanv.height);
+
+    ctx.translate(wOff.x, wOff.y);
+    ctx.scale(scale, scale);
 
     //Render rays
     ctx.strokeStyle = "#FFFFFF";
@@ -398,6 +380,34 @@ render = () => {
     ctx.fillStyle = "#00FF00";
     ctx.fill();
 
+    ctx.resetTransform();
+}
+
+//?INPUT
+var mPos = { x: 0, y: 0 };
+var prevMPos = { x: 0, y: 0 };
+window.onmousemove = (e) => {
+    mPos = {
+        x: ((e.clientX - dspCanvRect.left) / (dspCanvRect.right - dspCanvRect.left) * rCanv.width / scale) - wOff.x / scale,
+        y: ((e.clientY - dspCanvRect.top) / (dspCanvRect.bottom - dspCanvRect.top) * rCanv.height / scale) - wOff.y / scale
+    };
+}
+var click = false;
+var prevClick = false;
+window.onmousedown = (e) => {
+    click = true;
+}
+window.onmouseup = (e) => {
+    click = false;
+}
+
+var mKeys = new Map();
+var mKeysPrev = new Map();
+window.onkeydown = (e) => {
+    mKeys.set(e.key.toLowerCase(), true);
+}
+window.onkeyup = (e) => {
+    mKeys.set(e.key.toLowerCase(), false);
 }
 
 //?LOOP
