@@ -148,25 +148,19 @@ queryTree = (tree, rect) => {
 
 //?CONSTANTS
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
-const MAP_WIDTH = 960;
-const MAP_HEIGHT = 540;
+const MAP_WIDTH = 960 * 2;
+const MAP_HEIGHT = 540 * 2;
 
 //?GAMEDATA
 var emitters = [];
-emitters.push(emitter(400, 400, 0));
-emitters.push(emitter(550, 300, 0));
 
 var attractors = [];
-attractors.push(attractor(500, 300));
-attractors.push(attractor(700, 200));
 
 var clouds = [];
-clouds.push(cloud(300, 200, 75));
-clouds.push(cloud(700, 400, 60));
 
 var recivers = [];
-recivers.push(reciver(100, 50));
-recivers.push(reciver(840, 450));
+
+var stars = [];
 
 var rays = [];
 
@@ -182,6 +176,27 @@ var target = { x: 0, y: 0 };
 
 var scale = 1;
 var wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) / 2 };
+
+genCloudCluster = (x, y) => {
+    var r = Math.random() * 10 + 50;
+    var cloudCluster = [];
+    var n = Math.floor(Math.random() * 3) + 5;
+    for (var i = 0; i < n; i++) {
+        var cx = Math.cos((Math.PI * 2) / n * i) * lerp(r * 0.5, r, Math.random());
+        var cy = Math.sin((Math.PI * 2) / n * i) * lerp(r * 0.5, r, Math.random());
+        cloudCluster.push(cloud(cx + x, cy + y, mag({ x: cx, y: cy })));
+    }
+    return cloudCluster;
+}
+
+//?GENERATE MAP
+
+while (clouds.length < 50) {
+    var nextP = { x: Math.random() * MAP_WIDTH, y: Math.random() * MAP_HEIGHT };
+    if (!clouds.some(c => { return dist(c, nextP) < c.data.r * 5 })) {
+        clouds = clouds.concat(genCloudCluster(nextP.x, nextP.y));
+    }
+}
 
 //?UPDATE
 update = () => {
@@ -319,8 +334,8 @@ update = () => {
     mKeysPrev = new Map(mKeys);
     prevMPos = mPos;
     prevClick = click;
-    //scale -= 0.0001;
-    wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) / 2 };
+    scale -= 0.0001;
+    wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
 }
 
 //?RENDER
@@ -331,6 +346,17 @@ render = () => {
 
     ctx.translate(wOff.x, wOff.y);
     ctx.scale(scale, scale);
+
+    //Draw map boundaries
+    ctx.strokeStyle = '#FFF';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(MAP_WIDTH, 0);
+    ctx.lineTo(MAP_WIDTH, MAP_HEIGHT);
+    ctx.lineTo(0, MAP_HEIGHT);
+    ctx.closePath();
+    ctx.stroke();
 
     //Render rays
     ctx.strokeStyle = "#FFFFFF";
