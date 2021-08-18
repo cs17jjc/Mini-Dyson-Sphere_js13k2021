@@ -1,54 +1,7 @@
 //?CANVAS
-var dspCont1Style = window.getComputedStyle(document.getElementById("c1"));
-var dspCont2 = document.getElementById("c2");
-
-var dspCanv = document.getElementById("canvas");
-var dspCtx = dspCanv.getContext("2d");
-var dspCanvRect = dspCanv.getBoundingClientRect();
-
-var rCanv = document.createElement("canvas");
-rCanv.width = 960;
-rCanv.height = 540;
+var rCanv = document.getElementById("canvas");
+dspCanvRect = document.getElementById("c").getBoundingClientRect();
 var ctx = rCanv.getContext("2d");
-
-rendCanv = () => {
-    dspCtx.clearRect(0, 0, dspCanv.width, dspCanv.height);
-    dspCtx.drawImage(rCanv, 0, 0, dspCanv.width, dspCanv.height);
-}
-
-var haltAnim = true;
-onResize = () => {
-    var w = parseInt(dspCont1Style.getPropertyValue("width")) * 0.98;
-    var h = Math.floor(parseInt(dspCont1Style.getPropertyValue("height")) * 0.98);
-
-    var outW = 0;
-    var outH = 0;
-    if (h < w * 0.5625) {
-        outW = Math.floor(h * 1.7777);
-        outH = h;
-    } else {
-        outW = w;
-        outH = Math.floor(w * 0.5625);
-    }
-
-    dspCont2.style.width = outW + "px";
-    dspCont2.style.height = outH + "px";
-    dspCanv.width = outW;
-    dspCanv.height = outH;
-    dspCanvRect = dspCanv.getBoundingClientRect();
-
-    if (haltAnim) {
-        haltAnim = false;
-        document.body.classList.add("no-anim");
-        setTimeout(() => {
-            document.body.classList.remove("no-anim");
-            haltAnim = true;
-        }, 200);
-    }
-    rendCanv();
-};
-
-window.onload = () => { onResize(); };
 
 //?OBJECTS
 defObejct = (type, x, y, data) => { return { type, x, y, data }; }
@@ -487,8 +440,6 @@ window.onkeyup = (e) => {
 setInterval(() => {
     update();
     render();
-    rendCanv();
-
 }, 1000 / 60);
 
 onPause = () => {
