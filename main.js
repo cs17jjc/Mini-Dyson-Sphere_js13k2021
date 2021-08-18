@@ -112,14 +112,19 @@ const queryTree = (tree, rect) => {
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
 const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
-const EMITTER_RATE = 100;
-const EMITTER_SPEED = 1;
-const GRAV_RECT = { x: -20, y: -20, w: 40, h: 40 };
+const EMITTER_RATE = 200;
+const EMITTER_SPEED = 0.3;
+const EMITTER_BAND = 40;
+const EMITTER_LAYOUT = [5]
+const GRAV_RECT = { x: -50, y: -50, w: 100, h: 100 };
 
 //?GAMEDATA
 var emitters = [];
 var lastEmitSpawn = 0;
 var setCalcEms = [];
+var emitterHeight = 40;
+var emittersInBand = 0;
+var emitterBand = 0;
 
 var attractors = [];
 
@@ -138,10 +143,19 @@ var rotatingEmitter = null;
 var movingAttractor = null;
 
 var target = { x: 0, y: 0 };
+var lastValidTarget = { x: 0, y: 0 };
+var fineMidpoint = { x: 0, y: 0 };
 
 var startScale = 1.5;
 var scale = startScale;
-var wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) / 2 };
+var wOff;
+var scrnRect;
+
+const calcScaleDependants = () => {
+    wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
+    scrnRect = { x: MAP_WIDTH / 2 - rCanv.width / scale * 0.5, y: MAP_HEIGHT / 2 - rCanv.height / scale * 0.5, w: rCanv.width / scale, h: rCanv.height / scale };
+}
+calcScaleDependants();
 
 var paused = false;
 var frame = 0;
@@ -196,7 +210,7 @@ const update = () => {
     //Handle pointing currently rotating emitter at mouse
     if (isRotating) {
         if (mKeys.get('shift')) {
-            var s = 0.05;
+            var s = 0.01 * scale;
             var deltaPos = { x: (mPos.x - target.x) * s, y: (mPos.y - target.y) * s };
             rotatingEmitter.data.dir = angleBetw(rotatingEmitter, { x: target.x + deltaPos.x, y: target.y + deltaPos.y });
         } else {
@@ -209,13 +223,17 @@ const update = () => {
     //Handle pointing currently rotating emitter at mouse
     if (isMoving) {
         if (mKeys.get('shift')) {
-            var s = 0.05;
-            var deltaPos = { x: (mPos.x - target.x) * s, y: (mPos.y - target.y) * s };
-            movingAttractor.x = lerp(movingAttractor.x, target.x + deltaPos.x, EMITTER_SPEED);
-            movingAttractor.y = lerp(movingAttractor.y, target.y + deltaPos.y, EMITTER_SPEED);
-
+            var s = 0.01;
+            //console.log(s);
+            target = { x: (mPos.x - fineMidpoint.x) * s + fineMidpoint.x, y: (mPos.y - fineMidpoint.y) * s + fineMidpoint.y };
         } else {
             target = mPos;
+            fineMidpoint = mPos;
+        }
+
+        var near = queryTree(quadTree, { x: target.x - 100, y: target.y - 100, w: 200, h: 200 });
+        var valid = !near.filter(o => o != movingAttractor).some(o => { return dist(o, target) < o.data.r + movingAttractor.data.r; });
+        if (valid) {
             movingAttractor.x = lerp(movingAttractor.x, target.x, EMITTER_SPEED);
             movingAttractor.y = lerp(movingAttractor.y, target.y, EMITTER_SPEED);
         }
@@ -233,12 +251,28 @@ const update = () => {
         });
     }
 
+    //Spawn new emitter
     if (frame - lastEmitSpawn >= EMITTER_RATE) {
-        lastEmitSpawn = frame;
-        var ang = rnd(0, Math.PI * 2);
-        var r = 40;
-        var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
-        emitters.push(emitter(nextP.x, nextP.y, ang));
+        var counter = 0;
+        while (counter < 50 && emittersInBand <= EMITTER_LAYOUT[emitterBand]) {
+            lastEmitSpawn = frame;
+            var ang = rnd(0, Math.PI * 2);
+            var r = emitterHeight;
+            var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
+            var nextEm = emitter(nextP.x, nextP.y, ang);
+            var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 });
+            if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r * 1.2)) {
+                emitters.push(nextEm);
+                emittersInBand += 1;
+                break;
+            }
+            counter++;
+        }
+        if (emitterBand < EMITTER_LAYOUT.length && emittersInBand >= EMITTER_LAYOUT[emitterBand]) {
+            emitterHeight += EMITTER_BAND;
+            emittersInBand = 0;
+            emitterBand++;
+        }
     }
 
     quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers).concat(stars));
@@ -350,13 +384,14 @@ const update = () => {
     prevMPos = mPos;
     prevClick = click;
     if (!paused) {
-        frame++;
-        scale = Math.max(0.5, startScale - 0.00001 * frame);
-        wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
+        frame += 2;
+        scale = Math.max(0.5, startScale * Math.pow(0.9, frame / 1000));
+        calcScaleDependants();
+        /*
         mPos = {
             x: ((rawMPos.x - dspCanvRect.left) / (dspCanvRect.right - dspCanvRect.left) * rCanv.width / scale) - wOff.x / scale,
             y: ((rawMPos.y - dspCanvRect.top) / (dspCanvRect.bottom - dspCanvRect.top) * rCanv.height / scale) - wOff.y / scale
-        };
+        };*/
     }
 }
 
@@ -432,10 +467,10 @@ const render = () => {
         ctx.fill();
     });
 
-    ctx.beginPath();
-    ctx.arc(mPos.x, mPos.y, 3, 0, 2 * Math.PI);
-    ctx.fillStyle = "#00FF00";
-    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#00FF00";
+    ctx.strokeRect(scrnRect.x, scrnRect.y, scrnRect.w, scrnRect.h);
+    //console.log(scrnRect);
 
     ctx.resetTransform();
 }
