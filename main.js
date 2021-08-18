@@ -11,7 +11,7 @@ window.onresize = (e) => { dspCanvRect = getBoundRect(); };
 //?OBJECTS
 const defObejct = (type, x, y, data) => { return { type, x, y, data }; }
 
-const emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 10 }); }
+const emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 8, ray: [], calcRay: true }); }
 
 const attractor = (x, y) => { return defObejct("attractor", x, y, { r: 10, m: 100 }); }
 
@@ -112,9 +112,13 @@ const queryTree = (tree, rect) => {
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
 const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
+const EMITTER_RATE = 500;
+const EMITTER_SPEED = 1;
 
 //?GAMEDATA
 var emitters = [];
+var lastEmitSpawn = 0;
+var setCalcEms = [];
 
 var attractors = [];
 
@@ -123,8 +127,6 @@ var clouds = [];
 var recivers = [];
 
 var stars = [];
-
-var rays = [];
 
 var quadTree;
 
@@ -136,7 +138,8 @@ var movingAttractor = null;
 
 var target = { x: 0, y: 0 };
 
-var scale = 1;
+var startScale = 1.5;
+var scale = startScale;
 var wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) / 2 };
 
 var paused = false;
@@ -158,6 +161,7 @@ const genCloudCluster = (x, y, r) => {
 
 
 stars.push(star(MAP_WIDTH / 2, MAP_HEIGHT / 2, 25));
+attractors.push(attractor(MAP_WIDTH * 0.4, MAP_HEIGHT * 0.4));
 
 //Generate clouds
 //[radius, number, minR, maxR]
@@ -194,11 +198,11 @@ const update = () => {
             var s = 0.05;
             var deltaPos = { x: (mPos.x - target.x) * s, y: (mPos.y - target.y) * s };
             rotatingEmitter.data.dir = angleBetw(rotatingEmitter, { x: target.x + deltaPos.x, y: target.y + deltaPos.y });
-
         } else {
             target = mPos;
             rotatingEmitter.data.dir = angleBetw(rotatingEmitter, target);
         }
+        rotatingEmitter.data.calcRay = true;
     }
 
     //Handle pointing currently rotating emitter at mouse
@@ -206,28 +210,47 @@ const update = () => {
         if (mKeys.get('shift')) {
             var s = 0.05;
             var deltaPos = { x: (mPos.x - target.x) * s, y: (mPos.y - target.y) * s };
-            movingAttractor.x = target.x + deltaPos.x;
-            movingAttractor.y = target.y + deltaPos.y;
+            movingAttractor.x = lerp(movingAttractor.x, target.x + deltaPos.x, EMITTER_SPEED);
+            movingAttractor.y = lerp(movingAttractor.y, target.y + deltaPos.y, EMITTER_SPEED);
 
         } else {
             target = mPos;
-            movingAttractor.x = target.x;
-            movingAttractor.y = target.y;
+            movingAttractor.x = lerp(movingAttractor.x, target.x, EMITTER_SPEED);
+            movingAttractor.y = lerp(movingAttractor.y, target.y, EMITTER_SPEED);
         }
+
+
+        var rayPoints = emitters.map(em => { em.data.ray.map(p => p.emitter = em); return em.data.ray }).reduce((a, b) => a.concat(b), []);
+        var rayQTree = qTree(MAP_WIDTH, MAP_HEIGHT, rayPoints);
+        var pointsInRange = queryTree(rayQTree, { x: movingAttractor.x - 100, y: movingAttractor.y - 100, w: 200, h: 200 });
+        setCalcEms.forEach(em => em.data.calcRay = true);
+        setCalcEms = []
+        pointsInRange.forEach(p => {
+            if (setCalcEms.includes(p.emitter)) return;
+            p.emitter.data.calcRay = true;
+            setCalcEms.push(p.emitter);
+        });
     }
 
-    quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers));
+    if (frame - lastEmitSpawn >= EMITTER_RATE) {
+        lastEmitSpawn = frame;
+        var ang = rnd(0, Math.PI * 2);
+        var r = 40;
+        var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
+        emitters.push(emitter(nextP.x, nextP.y, ang));
+    }
+
+    quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers).concat(stars));
 
     //Populate rays list
-    rays = [];
-    emitters.forEach(em => {
-        var ray = { points: [{ x: em.x, y: em.y, steps: 0 }] }
+    emitters.filter(em => em.data.calcRay).forEach(em => {
+        var ray = [{ x: em.x, y: em.y, steps: 0 }];
         var hasHit = false;
         var a = em.data.dir;
         var vel = { x: Math.cos(a) * 2, y: Math.sin(a) * 2 };
-        while (!hasHit && ray.points.length < 1000) {
+        while (!hasHit && ray.length < 1000) {
 
-            var p = ray.points[ray.points.length - 1];
+            var p = ray[ray.length - 1];
             var maxSteps = Math.max(1, Math.floor(1 / mag(vel)));
             for (var steps = 0; steps < maxSteps; steps++) {
 
@@ -256,6 +279,7 @@ const update = () => {
                                 hasHit = true;
                             }
                             break;
+                        case 'star':
                         case 'cloud':
                             var d = dist(p, o);
                             if (d < o.data.r) {
@@ -280,14 +304,15 @@ const update = () => {
 
             }
             p.steps = maxSteps;
-            ray.points.push(p);
+            ray.push(p);
         }
-        rays.push(ray);
+        em.data.ray = ray;
+        em.data.calcRay = false;
     });
 
 
-    //Handle emitter click
-    if (click && !prevClick) {
+    if (click && !prevClick || !click && prevClick) {
+        //Handle emitter click
         if (isRotating) {
             isRotating = false;
             rotatingEmitter = null;
@@ -302,7 +327,7 @@ const update = () => {
                 rotatingEmitter = em;
             }
         }
-
+        //Handle attractor click
         if (isMoving) {
             isMoving = false;
             movingAttractor = null;
@@ -319,12 +344,14 @@ const update = () => {
         }
     }
 
+
+
     mKeysPrev = new Map(mKeys);
     prevMPos = mPos;
     prevClick = click;
     if (!paused) {
         frame++;
-        scale = Math.max(0.5, 1 - 0.0001 * frame);
+        scale = Math.max(0.5, startScale - 0.00001 * frame);
         wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
         mPos = {
             x: ((rawMPos.x - dspCanvRect.left) / (dspCanvRect.right - dspCanvRect.left) * rCanv.width / scale) - wOff.x / scale,
@@ -353,19 +380,20 @@ const render = () => {
     ctx.closePath();
     ctx.stroke();
 
-    //Render rays
-    ctx.strokeStyle = "#FFFFFF";
-    rays.forEach(ray => {
-        ctx.beginPath();
-        ctx.moveTo(ray.points[0].x, ray.points[0].y);
-        ray.points.slice(1).forEach(p => {
-            ctx.lineTo(p.x, p.y);
-        });
-        ctx.stroke();
-    });
+
 
     //Render emitters
     emitters.forEach(obj => {
+        //Render rays
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.beginPath();
+        ctx.moveTo(obj.data.ray[0].x, obj.data.ray[0].y);
+        obj.data.ray.slice(1).forEach(p => {
+            ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+
+        //Render emitters
         ctx.beginPath();
         ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
         ctx.fillStyle = "#FF0000";
