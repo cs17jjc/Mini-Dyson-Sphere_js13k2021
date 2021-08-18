@@ -5,7 +5,7 @@ cp main.js compiled/
 cp style.css compiled/
 
 cd compiled
-google-closure-compiler --js main.js --js_output_file min.js
+google-closure-compiler -O ADVANCED --js main.js --js_output_file min.js
 rm main.js
 sed -i 's/main.js/min.js/g' index.html
 cd ..

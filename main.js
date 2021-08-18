@@ -1,50 +1,55 @@
 //?CANVAS
 var rCanv = document.getElementById("canvas");
-dspCanvRect = document.getElementById("c").getBoundingClientRect();
 var ctx = rCanv.getContext("2d");
 
+const getBoundRect = () => { return document.getElementById("c").getBoundingClientRect(); }
+var dspCanvRect = getBoundRect();
+
+window.onload = (e) => { dspCanvRect = getBoundRect(); };
+window.onresize = (e) => { dspCanvRect = getBoundRect(); };
+
 //?OBJECTS
-defObejct = (type, x, y, data) => { return { type, x, y, data }; }
+const defObejct = (type, x, y, data) => { return { type, x, y, data }; }
 
-emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 10 }); }
+const emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 10 }); }
 
-attractor = (x, y) => { return defObejct("attractor", x, y, { r: 10, m: 100 }); }
+const attractor = (x, y) => { return defObejct("attractor", x, y, { r: 10, m: 100 }); }
 
-cloud = (x, y, r) => { return defObejct("cloud", x, y, { r }); }
+const cloud = (x, y, r) => { return defObejct("cloud", x, y, { r }); }
 
-reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10 }); }
+const reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10 }); }
 
-star = (x, y, r) => { return defObejct("star", x, y, { r }); }
+const star = (x, y, r) => { return defObejct("star", x, y, { r }); }
 
 //is point in rectangle
-isPinR = (obj, rect) => {
+const isPinR = (obj, rect) => {
     return (obj.x >= rect.x && obj.x <= rect.x + rect.w && obj.y >= rect.y && obj.y <= rect.y + rect.h);
 }
 
 //euclid dist
-dist = (p1, p2) => {
+const dist = (p1, p2) => {
     return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
 }
 
 //normalise
-norm = (p) => {
+const norm = (p) => {
     var mag = Math.sqrt(Math.pow(p.x, 2) + Math.pow(p.y, 2));
     return { x: p.x / mag, y: p.y / mag };
 };
 
-angleBetw = (p1, p2) => {
+const angleBetw = (p1, p2) => {
     return Math.atan2(p2.y - p1.y, p2.x - p1.x);
 }
 
-mag = (p) => { return Math.sqrt(Math.pow(p.x, 2) + Math.pow(p.y, 2)); }
+const mag = (p) => { return Math.sqrt(Math.pow(p.x, 2) + Math.pow(p.y, 2)); }
 
-lerp = (a, b, t) => { return a + (b - a) * t; }
+const lerp = (a, b, t) => { return a + (b - a) * t; }
 
-rnd = (a, b) => { return lerp(a, b, Math.random()); }
+const rnd = (a, b) => { return lerp(a, b, Math.random()); }
 
 
 //?QUADTREE
-qTree = (w, h, objects) => {
+const qTree = (w, h, objects) => {
 
     var defQuad = (x, y, w, h) => {
         return {
@@ -89,7 +94,7 @@ qTree = (w, h, objects) => {
     return root;
 }
 
-queryTree = (tree, rect) => {
+const queryTree = (tree, rect) => {
     if (tree.x <= rect.x + rect.w && tree.x + tree.w >= rect.x && tree.y <= rect.y + rect.h && tree.y + tree.h >= rect.y) {
         var ret = tree.objects.filter(o => isPinR(o, rect));
         if (tree.topLeft != null) {
@@ -137,7 +142,7 @@ var wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) / 2, y: MAP_HEIGHT / 2 - (
 var paused = false;
 var frame = 0;
 
-genCloudCluster = (x, y, r) => {
+const genCloudCluster = (x, y, r) => {
     var cloudCluster = [];
     var n = Math.floor(rnd(5, 8));
     for (var i = 0; i < n; i++) {
@@ -182,7 +187,7 @@ stars.push(star(MAP_WIDTH / 2, MAP_HEIGHT / 2, 25));
 
 
 //?UPDATE
-update = () => {
+const update = () => {
     //Handle pointing currently rotating emitter at mouse
     if (isRotating) {
         if (mKeys.get('shift')) {
@@ -330,7 +335,7 @@ update = () => {
 
 //?RENDER
 
-render = () => {
+const render = () => {
     //Clear canvas
     ctx.clearRect(0, 0, rCanv.width, rCanv.height);
 
@@ -442,7 +447,7 @@ setInterval(() => {
     render();
 }, 1000 / 60);
 
-onPause = () => {
+const onPause = () => {
     paused = !paused;
     document.getElementById("btn-pause").innerHTML = paused ? "▶️" : "⏸️";
 }
