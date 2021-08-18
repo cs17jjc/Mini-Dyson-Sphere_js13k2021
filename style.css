@@ -16,9 +16,6 @@ body.no-anim * {
 #c2 {
     background-color: black;
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     overflow: hidden;
 }
 
@@ -34,4 +31,7 @@ body.no-anim * {
 #btn-pause {
     position: relative;
     font-size: 2em;
+    top: 1%;
+    left: 96%;
+    cursor: pointer;
 }

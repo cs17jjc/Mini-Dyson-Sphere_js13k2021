@@ -366,7 +366,7 @@ update = () => {
     prevClick = click;
     if (!paused) {
         frame++;
-        scale = Math.max(0.5, scale - 0.0001);
+        scale = Math.max(0.5, 1 - 0.0001 * frame);
         wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
         mPos = {
             x: ((rawMPos.x - dspCanvRect.left) / (dspCanvRect.right - dspCanvRect.left) * rCanv.width / scale) - wOff.x / scale,
@@ -490,3 +490,8 @@ setInterval(() => {
     rendCanv();
 
 }, 1000 / 60);
+
+onPause = () => {
+    paused = !paused;
+    document.getElementById("btn-pause").innerHTML = paused ? "▶️" : "⏸️";
+}
