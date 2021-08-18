@@ -112,11 +112,12 @@ const queryTree = (tree, rect) => {
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
 const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
-const EMITTER_RATE = 200;
+const EMITTER_RATE = 500;
 const EMITTER_SPEED = 0.3;
 const EMITTER_BAND = 40;
-const EMITTER_LAYOUT = [5]
+const EMITTER_LAYOUT = [5, 10]
 const GRAV_RECT = { x: -50, y: -50, w: 100, h: 100 };
+const RECIVER_RATE = 200;
 
 //?GAMEDATA
 var emitters = [];
@@ -131,6 +132,7 @@ var attractors = [];
 var clouds = [];
 
 var recivers = [];
+var lastRecSpawn = 0;
 
 var stars = [];
 
@@ -183,7 +185,8 @@ attractors.push(attractor(MAP_WIDTH * 0.4, MAP_HEIGHT * 0.4));
 [
     [270, 2, 50, 50],
     [200, 5, 20, 20],
-    [380, 2, 80, 80],
+    [380, 5, 60, 60],
+    [480, 3, 80, 80],
 ].forEach(layout => {
     for (var i = 0; i < layout[1]; i++) {
         var counter = 0;
@@ -274,6 +277,20 @@ const update = () => {
             emitterBand++;
         }
     }
+
+
+    if (frame - lastRecSpawn >= RECIVER_RATE && emitters.length > recivers.length) {
+
+        var nextP = { x: rnd(scrnRect.x, scrnRect.x + scrnRect.w), y: rnd(scrnRect.y, scrnRect.y + scrnRect.h) };
+        var nextR = reciver(nextP.x, nextP.y);
+        var near = queryTree(quadTree, { x: nextR.x - 150, y: nextR.y - 150, w: 300, h: 300 });
+        if (!near.some(o => dist(o, nextR) < o.data.r + nextR.data.r + (o.type == "reciver" ? 100 : 20)) && dist(nextR, stars[0]) > 300) {
+            recivers.push(nextR);
+            lastRecSpawn = frame;
+        }
+
+    }
+
 
     quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers).concat(stars));
 
@@ -384,7 +401,7 @@ const update = () => {
     prevMPos = mPos;
     prevClick = click;
     if (!paused) {
-        frame += 2;
+        frame += 1;
         scale = Math.max(0.5, startScale * Math.pow(0.9, frame / 1000));
         calcScaleDependants();
         /*
