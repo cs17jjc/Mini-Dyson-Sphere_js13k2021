@@ -13,7 +13,7 @@ const defObejct = (type, x, y, data) => { return { type, x, y, data }; }
 
 const emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 8, ray: [], calcRay: true }); }
 
-const attractor = (x, y) => { return defObejct("attractor", x, y, { r: 10, m: 100 }); }
+const attractor = (x, y) => { return defObejct("attractor", x, y, { r: 6, m: 200 }); }
 
 const cloud = (x, y, r) => { return defObejct("cloud", x, y, { r }); }
 
@@ -112,8 +112,9 @@ const queryTree = (tree, rect) => {
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
 const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
-const EMITTER_RATE = 500;
+const EMITTER_RATE = 100;
 const EMITTER_SPEED = 1;
+const GRAV_RECT = { x: -20, y: -20, w: 40, h: 40 };
 
 //?GAMEDATA
 var emitters = [];
@@ -222,7 +223,7 @@ const update = () => {
 
         var rayPoints = emitters.map(em => { em.data.ray.map(p => p.emitter = em); return em.data.ray }).reduce((a, b) => a.concat(b), []);
         var rayQTree = qTree(MAP_WIDTH, MAP_HEIGHT, rayPoints);
-        var pointsInRange = queryTree(rayQTree, { x: movingAttractor.x - 100, y: movingAttractor.y - 100, w: 200, h: 200 });
+        var pointsInRange = queryTree(rayQTree, { x: movingAttractor.x + GRAV_RECT.x, y: movingAttractor.y + GRAV_RECT.y, w: GRAV_RECT.w, h: GRAV_RECT.h });
         setCalcEms.forEach(em => em.data.calcRay = true);
         setCalcEms = []
         pointsInRange.forEach(p => {
@@ -263,7 +264,7 @@ const update = () => {
                 }
 
                 var f = { x: 0, y: 0 };
-                var near = queryTree(quadTree, { x: p.x - 100, y: p.y - 100, w: 200, h: 200 });
+                var near = queryTree(quadTree, { x: p.x + GRAV_RECT.x, y: p.y + GRAV_RECT.y, w: GRAV_RECT.w, h: GRAV_RECT.h });
 
                 near.forEach(o => {
 
@@ -271,7 +272,7 @@ const update = () => {
                         case 'attractor':
                             var d = dist(p, o);
                             var angle = angleBetw(p, o);
-                            var force = 0.1 * ((o.data.m * PHOTON_MASS) / (d * d * (d * 0.01)));
+                            var force = 0.1 * ((o.data.m * PHOTON_MASS) / (d * d * (d * 0.1)));
                             f.x += force * Math.cos(angle);
                             f.y += force * Math.sin(angle);
 
@@ -303,8 +304,7 @@ const update = () => {
                 p = { x: p.x + vel.x, y: p.y + vel.y };
 
             }
-            p.steps = maxSteps;
-            ray.push(p);
+            if (!hasHit) ray.push(p);
         }
         em.data.ray = ray;
         em.data.calcRay = false;
