@@ -31,11 +31,7 @@ body.no-anim * {
     height: 100%;
 }
 
-#test {
-    background-color: red;
-    width: 10%;
-    height: 10%;
-    position: absolute;
-    animation: anim 1s ease-in-out infinite alternate;
-    display: none;
+#btn-pause {
+    position: relative;
+    font-size: 2em;
 }
