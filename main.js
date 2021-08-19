@@ -11,7 +11,7 @@ window.onresize = (e) => { dspCanvRect = getBoundRect(); };
 //?OBJECTS
 const defObejct = (type, x, y, data) => { return { type, x, y, data }; }
 
-const emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 8, ray: [], calcRay: true }); }
+const emitter = (x, y, dir, frameSpawned) => { return defObejct("emitter", x, y, { dir, r: 8, ray: [], calcRay: true, frameSpawned }); }
 
 const attractor = (x, y) => { return defObejct("attractor", x, y, { r: 6, m: 200 }); }
 
@@ -178,14 +178,14 @@ const MAP_HEIGHT = 540 * 2;
 const EMITTER_RATE = 600;
 const EMITTER_SPEED = 0.3;
 const EMITTER_BAND = 40;
-const EMITTER_LAYOUT = [5, 10]
+const EMITTER_LAYOUT = [5, 10, 15]
 const GRAV_RECT = { x: -50, y: -50, w: 100, h: 100 };
 const RECIVER_RATE = 600;
 const CLOUD_COLOURS = ["f72585", "b5179e", "7209b7", "560bad", "480ca8", "3a0ca3", "3f37c9", "4361ee", "4895ef", "4cc9f0"];
 
 //?GAMEDATA
 var emitters = [];
-var lastEmitSpawn = 0;
+var lastEmitSpawn = -EMITTER_RATE;
 var setCalcEms = [];
 var connectedEms = [];
 var emitterHeight = 40;
@@ -198,7 +198,7 @@ var justPlacedAttractor = false;
 var cloudClusters = [];
 
 var recivers = [];
-var lastRecSpawn = 0;
+var lastRecSpawn = -RECIVER_RATE;
 
 var stars = [];
 
@@ -249,6 +249,7 @@ const genCloudCluster = (x, y, r) => {
         for (var y2 = 0; y2 < tempCanvFill.height; y2++) {
             var v = (perlin2(x2 * perlinScale / tempCanvFill.width, y2 * perlinScale / tempCanvFill.height) + 0.5);
             v += rnd(-0.05, 0.05);
+            tempCtx.globalAlpha = lerp(0.8, 1, v);
             tempCtx.fillStyle = "#" + CLOUD_COLOURS[Math.min(CLOUD_COLOURS.length - 1, Math.floor(v * CLOUD_COLOURS.length))];
             tempCtx.fillRect(x2, y2, 1, 1);
         }
@@ -291,21 +292,22 @@ const genCloudCluster = (x, y, r) => {
 stars.push(star(MAP_WIDTH / 2, MAP_HEIGHT / 2, 25));
 
 //Generate clouds
-//[radius, number, minR, maxR]
+//[min radius,max radius, number, minR, maxR]
 [
-    [270, 2, 50, 50],
-    [200, 5, 20, 20],
-    [380, 5, 60, 60],
-    [480, 3, 80, 80],
+
+    [180, 180, 6, 20, 20],
+    [360, 360, 8, 50, 50],
+    [540, 540, 10, 80, 80],
+    [680, 540, 10, 100, 100],
 ].forEach(layout => {
-    for (var i = 0; i < layout[1]; i++) {
+    for (var i = 0; i < layout[2]; i++) {
         var counter = 0;
         var hasPlace = false;
         while (counter < 100 && !hasPlace) {
             var ang = rnd(0, Math.PI * 2);
-            var r = layout[0];
+            var r = rnd(layout[0], layout[1]);
             var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
-            var radius = rnd(layout[2], layout[3]);
+            var radius = rnd(layout[3], layout[4]);
             var clouds = cloudClusters.map(cc => cc.data.clouds).reduce((a, b) => a.concat(b), []);
             if (!clouds.some(c => { return dist(c, nextP) < c.data.r * 2 + radius * 2; })) {
                 cloudClusters = cloudClusters.concat(genCloudCluster(nextP.x, nextP.y, radius));
@@ -371,7 +373,7 @@ const update = () => {
             var ang = rnd(0, Math.PI * 2);
             var r = emitterHeight;
             var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
-            var nextEm = emitter(nextP.x, nextP.y, ang);
+            var nextEm = emitter(nextP.x, nextP.y, ang, frame);
             var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 });
             if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r * 1.2)) {
                 emitters.push(nextEm);
@@ -393,7 +395,7 @@ const update = () => {
         var nextP = { x: rnd(scrnRect.x, scrnRect.x + scrnRect.w), y: rnd(scrnRect.y, scrnRect.y + scrnRect.h) };
         var nextR = reciver(nextP.x, nextP.y);
         var near = queryTree(quadTree, { x: nextR.x - 150, y: nextR.y - 150, w: 300, h: 300 });
-        if (!near.some(o => dist(o, nextR) < o.data.r + nextR.data.r + (o.type == "reciver" ? 100 : 20)) && dist(nextR, stars[0]) > 300) {
+        if (!near.some(o => dist(o, nextR) < o.data.r + nextR.data.r + (o.type == "reciver" ? 80 : 10)) && dist(nextR, stars[0]) > 250) {
             recivers.push(nextR);
             lastRecSpawn = frame;
         }
@@ -466,11 +468,12 @@ const update = () => {
     recivers.forEach(r => {
         var raysNear = queryTree(rayQTree, { x: r.x - r.data.r, y: r.y - r.data.r, w: r.data.r * 2, h: r.data.r * 2 });
         var touches = raysNear.filter(p => dist(p, r) <= r.data.r);
-        touches.forEach(p => {
-            if (connectedEms.includes(p.emitter)) return;
+        r.data.power = false;
+        touches.sort((a, b) => a.emitter.frameSpawned - b.emitter.frameSpawned).forEach(p => {
+            if (connectedEms.includes(p.emitter) || r.data.power) return;
             connectedEms.push(p.emitter);
+            r.data.power = true;
         });
-        r.data.power = touches.length > 0;
     });
 
     if (click && !prevClick && !justPlacedAttractor) {
@@ -515,11 +518,6 @@ const update = () => {
         frame += 1;
         scale = Math.max(0.5, startScale * Math.pow(0.95, frame / 1000));
         calcScaleDependants();
-        /*
-        mPos = {
-            x: ((rawMPos.x - dspCanvRect.left) / (dspCanvRect.right - dspCanvRect.left) * rCanv.width / scale) - wOff.x / scale,
-            y: ((rawMPos.y - dspCanvRect.top) / (dspCanvRect.bottom - dspCanvRect.top) * rCanv.height / scale) - wOff.y / scale
-        };*/
     }
     justPlacedAttractor = false;
 }
@@ -532,19 +530,6 @@ const render = () => {
 
     ctx.translate(wOff.x, wOff.y);
     ctx.scale(scale, scale);
-
-    //Draw map boundaries
-    ctx.strokeStyle = '#FFF';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(MAP_WIDTH, 0);
-    ctx.lineTo(MAP_WIDTH, MAP_HEIGHT);
-    ctx.lineTo(0, MAP_HEIGHT);
-    ctx.closePath();
-    ctx.stroke();
-
-
 
     //Render emitters
     emitters.forEach(obj => {
@@ -561,14 +546,7 @@ const render = () => {
         ctx.beginPath();
         ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
         ctx.fillStyle = "#FF0000";
-        ctx.fill();
-    });
-
-    //Render attractors
-    attractors.forEach(obj => {
-        ctx.beginPath();
-        ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
-        ctx.fillStyle = "#00FF00";
+        if (connectedEms.includes(obj)) ctx.fillStyle = "#FF8800";
         ctx.fill();
     });
 
@@ -597,10 +575,13 @@ const render = () => {
         ctx.drawImage(obj.data.img, obj.x - obj.data.img.width / 2, obj.y - obj.data.img.height / 2);
     });
 
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = "#00FF00";
-    ctx.strokeRect(scrnRect.x, scrnRect.y, scrnRect.w, scrnRect.h);
-    //console.log(scrnRect);
+    //Render attractors
+    attractors.forEach(obj => {
+        ctx.beginPath();
+        ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
+        ctx.fillStyle = "#00FF00";
+        ctx.fill();
+    });
 
     ctx.resetTransform();
 }
