@@ -15,9 +15,11 @@ const emitter = (x, y, dir) => { return defObejct("emitter", x, y, { dir, r: 8, 
 
 const attractor = (x, y) => { return defObejct("attractor", x, y, { r: 6, m: 200 }); }
 
-const cloud = (x, y, r) => { return defObejct("cloud", x, y, { r }); }
+const cloud = (x, y, r, c) => { return defObejct("cloud", x, y, { r, c }); }
 
-const reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10 }); }
+const cloudCluster = (x, y, r, clouds, img) => { return defObejct("cloudCluster", x, y, { r, clouds, img }); }
+
+const reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10, power: false }); }
 
 const star = (x, y, r) => { return defObejct("star", x, y, { r }); }
 
@@ -46,6 +48,67 @@ const mag = (p) => { return Math.sqrt(Math.pow(p.x, 2) + Math.pow(p.y, 2)); }
 const lerp = (a, b, t) => { return a + (b - a) * t; }
 
 const rnd = (a, b) => { return lerp(a, b, Math.random()); }
+
+const rndPick = (arr) => {
+    return arr[Math.floor(rnd(0, arr.length))];
+}
+
+var gArr = (n) => Array.from(new Array(n).keys());
+
+//?Perlin
+class Grad {
+    constructor(x, y, z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
+    dot2(x, y) {
+        return this.x * x + this.y * y;
+    }
+}
+
+var grad3 = [new Grad(1, 1, 0), new Grad(-1, 1, 0), new Grad(1, -1, 0), new Grad(-1, -1, 0),
+    new Grad(1, 0, 1), new Grad(-1, 0, 1), new Grad(1, 0, -1), new Grad(-1, 0, -1),
+    new Grad(0, 1, 1), new Grad(0, -1, 1), new Grad(0, 1, -1), new Grad(0, -1, -1)
+];
+var p = gArr(256).map(i => Math.trunc(Math.random() * 255));
+var perm = new Array(512);
+var gradP = new Array(512);
+
+function seed(seed) {
+    seed *= seed > 0 && seed < 1 ? 65536 : 1;
+    seed = Math.floor(seed);
+    seed = seed < 256 ? seed |= seed << 8 : seed;
+    gArr(256).forEach(i => {
+        var v = i & 1 ? p[i] ^ (seed & 255) : p[i] ^ ((seed >> 8) & 255);
+        perm[i] = perm[i + 256] = v;
+        gradP[i] = gradP[i + 256] = grad3[v % 12];
+    });
+};
+
+function fade(t) {
+    return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function perlin2(x, y) {
+    var X = Math.floor(x),
+        Y = Math.floor(y);
+    x = x - X;
+    y = y - Y;
+    X = X & 255;
+    Y = Y & 255;
+    var u = fade(x);
+    var n00 = gradP[X + perm[Y]].dot2(x, y);
+    var n01 = gradP[X + perm[Y + 1]].dot2(x, y - 1);
+    var n10 = gradP[X + 1 + perm[Y]].dot2(x - 1, y);
+    var n11 = gradP[X + 1 + perm[Y + 1]].dot2(x - 1, y - 1);
+    return lerp(
+        lerp(n00, n10, u),
+        lerp(n01, n11, u),
+        fade(y));
+};
+
+seed(Math.random());
 
 
 //?QUADTREE
@@ -112,24 +175,27 @@ const queryTree = (tree, rect) => {
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
 const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
-const EMITTER_RATE = 500;
+const EMITTER_RATE = 600;
 const EMITTER_SPEED = 0.3;
 const EMITTER_BAND = 40;
 const EMITTER_LAYOUT = [5, 10]
 const GRAV_RECT = { x: -50, y: -50, w: 100, h: 100 };
-const RECIVER_RATE = 200;
+const RECIVER_RATE = 600;
+const CLOUD_COLOURS = ["f72585", "b5179e", "7209b7", "560bad", "480ca8", "3a0ca3", "3f37c9", "4361ee", "4895ef", "4cc9f0"];
 
 //?GAMEDATA
 var emitters = [];
 var lastEmitSpawn = 0;
 var setCalcEms = [];
+var connectedEms = [];
 var emitterHeight = 40;
 var emittersInBand = 0;
 var emitterBand = 0;
 
 var attractors = [];
+var justPlacedAttractor = false;
 
-var clouds = [];
+var cloudClusters = [];
 
 var recivers = [];
 var lastRecSpawn = 0;
@@ -145,8 +211,8 @@ var rotatingEmitter = null;
 var movingAttractor = null;
 
 var target = { x: 0, y: 0 };
-var lastValidTarget = { x: 0, y: 0 };
 var fineMidpoint = { x: 0, y: 0 };
+var targetValid = false;
 
 var startScale = 1.5;
 var scale = startScale;
@@ -163,22 +229,66 @@ var paused = false;
 var frame = 0;
 
 const genCloudCluster = (x, y, r) => {
-    var cloudCluster = [];
+    var clouds = [];
     var n = Math.floor(rnd(5, 8));
     for (var i = 0; i < n; i++) {
         var tempR = rnd(r * 0.5, r * 0.8);
         var cx = Math.cos((Math.PI * 2) / n * i) * tempR;
         var cy = Math.sin((Math.PI * 2) / n * i) * tempR;
-        cloudCluster.push(cloud(cx + x, cy + y, mag({ x: cx, y: cy })));
+        clouds.push(cloud(cx + x, cy + y, mag({ x: cx, y: cy }), rndPick(CLOUD_COLOURS)));
     }
-    return cloudCluster;
+
+    var tempCanvFill = document.createElement("canvas");
+    tempCanvFill.width = r * 4;
+    tempCanvFill.height = r * 4;
+    var tempCtx = tempCanvFill.getContext("2d");
+    //draw perlin noise
+    seed(Math.random());
+    var perlinScale = rnd(3, 3);
+    for (var x2 = 0; x2 < tempCanvFill.width; x2++) {
+        for (var y2 = 0; y2 < tempCanvFill.height; y2++) {
+            var v = (perlin2(x2 * perlinScale / tempCanvFill.width, y2 * perlinScale / tempCanvFill.height) + 0.5);
+            v += rnd(-0.05, 0.05);
+            tempCtx.fillStyle = "#" + CLOUD_COLOURS[Math.min(CLOUD_COLOURS.length - 1, Math.floor(n * CLOUD_COLOURS.length))];
+            tempCtx.fillRect(x2, y2, 1, 1);
+        }
+    }
+    tempCtx.globalAlpha = 1;
+
+    var tempCanvMask = document.createElement("canvas");
+    tempCanvMask.width = r * 4;
+    tempCanvMask.height = r * 4;
+    tempCtx = tempCanvMask.getContext("2d");
+    //draw clouds
+    tempCtx.fillStyle = "#FFFFFF";
+    tempCtx.filter = 'blur(5px)';
+    clouds.forEach(c => {
+        tempCtx.beginPath();
+        tempCtx.arc(r * 2 + c.x - x, r * 2 + c.y - y, c.data.r, 0, Math.PI * 2);
+        tempCtx.fill();
+    });
+
+    tempCtx.filter = 'none';
+    tempCtx.globalCompositeOperation = 'source-in';
+    tempCtx.drawImage(tempCanvFill, 0, 0);
+    tempCtx.globalCompositeOperation = 'source-over';
+
+    tempCtx.globalAlpha = 0.1;
+    tempCtx.filter = 'blur(1px)';
+    clouds.forEach(c => {
+        tempCtx.fillStyle = "#" + c.data.c;
+        tempCtx.beginPath();
+        tempCtx.arc(r * 2 + c.x - x, r * 2 + c.y - y, c.data.r + 5, 0, Math.PI * 2);
+        tempCtx.fill();
+    });
+
+
+    return cloudCluster(x, y, r, clouds, tempCanvMask);
 }
 
 //?GENERATE MAP
 
-
 stars.push(star(MAP_WIDTH / 2, MAP_HEIGHT / 2, 25));
-attractors.push(attractor(MAP_WIDTH * 0.4, MAP_HEIGHT * 0.4));
 
 //Generate clouds
 //[radius, number, minR, maxR]
@@ -195,10 +305,10 @@ attractors.push(attractor(MAP_WIDTH * 0.4, MAP_HEIGHT * 0.4));
             var ang = rnd(0, Math.PI * 2);
             var r = layout[0];
             var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
-
             var radius = rnd(layout[2], layout[3]);
+            var clouds = cloudClusters.map(cc => cc.data.clouds).reduce((a, b) => a.concat(b), []);
             if (!clouds.some(c => { return dist(c, nextP) < c.data.r * 2 + radius * 2; })) {
-                clouds = clouds.concat(genCloudCluster(nextP.x, nextP.y, radius));
+                cloudClusters = cloudClusters.concat(genCloudCluster(nextP.x, nextP.y, radius));
                 hasPlace = true;
             }
 
@@ -223,11 +333,15 @@ const update = () => {
         rotatingEmitter.data.calcRay = true;
     }
 
-    //Handle pointing currently rotating emitter at mouse
+
+    //Create a quadtree specifically for ray points
+    var rayPoints = emitters.map(em => { em.data.ray.map(p => p.emitter = em); return em.data.ray }).reduce((a, b) => a.concat(b), []);
+    var rayQTree = qTree(MAP_WIDTH, MAP_HEIGHT, rayPoints);
+
+    //Handle moving currently moving attractor to mouse
     if (isMoving) {
         if (mKeys.get('shift')) {
-            var s = 0.01;
-            //console.log(s);
+            var s = 0.01 * scale;
             target = { x: (mPos.x - fineMidpoint.x) * s + fineMidpoint.x, y: (mPos.y - fineMidpoint.y) * s + fineMidpoint.y };
         } else {
             target = mPos;
@@ -235,15 +349,10 @@ const update = () => {
         }
 
         var near = queryTree(quadTree, { x: target.x - 100, y: target.y - 100, w: 200, h: 200 });
-        var valid = !near.filter(o => o != movingAttractor).some(o => { return dist(o, target) < o.data.r + movingAttractor.data.r; });
-        if (valid) {
-            movingAttractor.x = lerp(movingAttractor.x, target.x, EMITTER_SPEED);
-            movingAttractor.y = lerp(movingAttractor.y, target.y, EMITTER_SPEED);
-        }
+        targetValid = !near.filter(o => o != movingAttractor).some(o => { return dist(o, target) < o.data.r + movingAttractor.data.r; });
+        movingAttractor.x = lerp(movingAttractor.x, target.x, EMITTER_SPEED);
+        movingAttractor.y = lerp(movingAttractor.y, target.y, EMITTER_SPEED);
 
-
-        var rayPoints = emitters.map(em => { em.data.ray.map(p => p.emitter = em); return em.data.ray }).reduce((a, b) => a.concat(b), []);
-        var rayQTree = qTree(MAP_WIDTH, MAP_HEIGHT, rayPoints);
         var pointsInRange = queryTree(rayQTree, { x: movingAttractor.x + GRAV_RECT.x, y: movingAttractor.y + GRAV_RECT.y, w: GRAV_RECT.w, h: GRAV_RECT.h });
         setCalcEms.forEach(em => em.data.calcRay = true);
         setCalcEms = []
@@ -291,7 +400,7 @@ const update = () => {
 
     }
 
-
+    var clouds = cloudClusters.map(cc => cc.data.clouds).reduce((a, b) => a.concat(b), []);
     quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers).concat(stars));
 
     //Populate rays list
@@ -331,21 +440,13 @@ const update = () => {
                                 hasHit = true;
                             }
                             break;
-                        case 'star':
-                        case 'cloud':
-                            var d = dist(p, o);
-                            if (d < o.data.r) {
-                                hasHit = true;
-                            }
-                            break;
-                        case 'reciver':
-                            var d = dist(p, o);
-                            if (d < o.data.r) {
-                                hasHit = true;
-                            }
+                        case 'emitter':
                             break;
                         default:
-                            break;
+                            var d = dist(p, o);
+                            if (d < o.data.r) {
+                                hasHit = true;
+                            }
                     }
                 });
 
@@ -361,8 +462,18 @@ const update = () => {
         em.data.calcRay = false;
     });
 
+    connectedEms = [];
+    recivers.forEach(r => {
+        var raysNear = queryTree(rayQTree, { x: r.x - r.data.r, y: r.y - r.data.r, w: r.data.r * 2, h: r.data.r * 2 });
+        var touches = raysNear.filter(p => dist(p, r) <= r.data.r);
+        touches.forEach(p => {
+            if (connectedEms.includes(p.emitter)) return;
+            connectedEms.push(p.emitter);
+        });
+        r.data.power = touches.length > 0;
+    });
 
-    if (click && !prevClick || !click && prevClick) {
+    if (click && !prevClick && !justPlacedAttractor) {
         //Handle emitter click
         if (isRotating) {
             isRotating = false;
@@ -379,7 +490,7 @@ const update = () => {
             }
         }
         //Handle attractor click
-        if (isMoving) {
+        if (isMoving && targetValid) {
             isMoving = false;
             movingAttractor = null;
         } else if (!isRotating) {
@@ -402,7 +513,7 @@ const update = () => {
     prevClick = click;
     if (!paused) {
         frame += 1;
-        scale = Math.max(0.5, startScale * Math.pow(0.9, frame / 1000));
+        scale = Math.max(0.5, startScale * Math.pow(0.95, frame / 1000));
         calcScaleDependants();
         /*
         mPos = {
@@ -410,6 +521,7 @@ const update = () => {
             y: ((rawMPos.y - dspCanvRect.top) / (dspCanvRect.bottom - dspCanvRect.top) * rCanv.height / scale) - wOff.y / scale
         };*/
     }
+    justPlacedAttractor = false;
 }
 
 //?RENDER
@@ -460,19 +572,15 @@ const render = () => {
         ctx.fill();
     });
 
-    //Render clouds
-    clouds.forEach(obj => {
-        ctx.beginPath();
-        ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fill();
-    });
-
     //Render recivers
     recivers.forEach(obj => {
         ctx.beginPath();
         ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
-        ctx.fillStyle = "#FFAA00";
+        if (obj.data.power) {
+            ctx.fillStyle = "#AAFF00";
+        } else {
+            ctx.fillStyle = "#FFAA00";
+        }
         ctx.fill();
     });
 
@@ -482,6 +590,11 @@ const render = () => {
         ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
         ctx.fillStyle = "#FFFF00";
         ctx.fill();
+    });
+
+    //Render clouds
+    cloudClusters.forEach(obj => {
+        ctx.drawImage(obj.data.img, obj.x - obj.data.img.width / 2, obj.y - obj.data.img.height / 2);
     });
 
     ctx.lineWidth = 5;
@@ -531,3 +644,12 @@ const onPause = () => {
     paused = !paused;
     document.getElementById("btn-pause").innerHTML = paused ? "▶️" : "⏸️";
 }
+
+const placeAttractor = () => {
+    target = mPos;
+    var newAttractor = attractor(target.x, target.y);
+    attractors.push(newAttractor);
+    isMoving = true;
+    movingAttractor = newAttractor;
+    justPlacedAttractor = true;
+};
