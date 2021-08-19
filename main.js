@@ -249,7 +249,7 @@ const genCloudCluster = (x, y, r) => {
         for (var y2 = 0; y2 < tempCanvFill.height; y2++) {
             var v = (perlin2(x2 * perlinScale / tempCanvFill.width, y2 * perlinScale / tempCanvFill.height) + 0.5);
             v += rnd(-0.05, 0.05);
-            tempCtx.fillStyle = "#" + CLOUD_COLOURS[Math.min(CLOUD_COLOURS.length - 1, Math.floor(n * CLOUD_COLOURS.length))];
+            tempCtx.fillStyle = "#" + CLOUD_COLOURS[Math.min(CLOUD_COLOURS.length - 1, Math.floor(v * CLOUD_COLOURS.length))];
             tempCtx.fillRect(x2, y2, 1, 1);
         }
     }
