@@ -55,6 +55,13 @@ const rndPick = (arr) => {
 
 var gArr = (n) => Array.from(new Array(n).keys());
 
+var tmpCanv = (width, height) => {
+    var r = document.createElement("canvas");
+    r.width = width;
+    r.height = height;
+    return { canv: r, ctx: r.getContext("2d") };
+}
+
 //?Perlin
 class Grad {
     constructor(x, y, z) {
@@ -183,6 +190,8 @@ const GRAV_RECT = { x: -50, y: -50, w: 100, h: 100 };
 const RECIVER_RATE = 600;
 const CLOUD_COLOURS = ["f72585", "b5179e", "7209b7", "560bad", "480ca8", "3a0ca3", "3f37c9", "4361ee", "4895ef", "4cc9f0"];
 
+const UI_OBJS = new Map();
+UI_OBJS.set("eff", document.getElementById("dsp-eff-val"));
 //?GAMEDATA
 var emitters = [];
 var lastEmitSpawn = -EMITTER_RATE;
@@ -219,6 +228,9 @@ var scale = startScale;
 var wOff;
 var scrnRect;
 
+var efficiency = 1;
+var viability = 1;
+
 const calcScaleDependants = () => {
     wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
     scrnRect = { x: MAP_WIDTH / 2 - rCanv.width / scale * 0.5, y: MAP_HEIGHT / 2 - rCanv.height / scale * 0.5, w: rCanv.width / scale, h: rCanv.height / scale };
@@ -238,10 +250,7 @@ const genCloudCluster = (x, y, r) => {
         clouds.push(cloud(cx + x, cy + y, mag({ x: cx, y: cy }), rndPick(CLOUD_COLOURS)));
     }
 
-    var tempCanvFill = document.createElement("canvas");
-    tempCanvFill.width = r * 4;
-    tempCanvFill.height = r * 4;
-    var tempCtx = tempCanvFill.getContext("2d");
+    var { canv: tempCanvFill, ctx: tempCtx } = tmpCanv(r * 4, r * 4);
     //draw perlin noise
     seed(Math.random());
     var perlinScale = rnd(3, 3);
@@ -256,31 +265,28 @@ const genCloudCluster = (x, y, r) => {
     }
     tempCtx.globalAlpha = 1;
 
-    var tempCanvMask = document.createElement("canvas");
-    tempCanvMask.width = r * 4;
-    tempCanvMask.height = r * 4;
-    tempCtx = tempCanvMask.getContext("2d");
+    var { canv: tempCanvMask, ctx: tempCtxMask } = tmpCanv(r * 4, r * 4);
     //draw clouds
-    tempCtx.fillStyle = "#FFFFFF";
-    tempCtx.filter = 'blur(5px)';
+    tempCtxMask.fillStyle = "#FFFFFF";
+    tempCtxMask.filter = 'blur(5px)';
     clouds.forEach(c => {
-        tempCtx.beginPath();
-        tempCtx.arc(r * 2 + c.x - x, r * 2 + c.y - y, c.data.r, 0, Math.PI * 2);
-        tempCtx.fill();
+        tempCtxMask.beginPath();
+        tempCtxMask.arc(r * 2 + c.x - x, r * 2 + c.y - y, c.data.r, 0, Math.PI * 2);
+        tempCtxMask.fill();
     });
 
-    tempCtx.filter = 'none';
-    tempCtx.globalCompositeOperation = 'source-in';
-    tempCtx.drawImage(tempCanvFill, 0, 0);
-    tempCtx.globalCompositeOperation = 'source-over';
+    tempCtxMask.filter = 'none';
+    tempCtxMask.globalCompositeOperation = 'source-in';
+    tempCtxMask.drawImage(tempCanvFill, 0, 0);
+    tempCtxMask.globalCompositeOperation = 'source-over';
 
-    tempCtx.globalAlpha = 0.1;
-    tempCtx.filter = 'blur(1px)';
+    tempCtxMask.globalAlpha = 0.1;
+    tempCtxMask.filter = 'blur(1px)';
     clouds.forEach(c => {
-        tempCtx.fillStyle = "#" + c.data.c;
-        tempCtx.beginPath();
-        tempCtx.arc(r * 2 + c.x - x, r * 2 + c.y - y, c.data.r + 5, 0, Math.PI * 2);
-        tempCtx.fill();
+        tempCtxMask.fillStyle = "#" + c.data.c;
+        tempCtxMask.beginPath();
+        tempCtxMask.arc(r * 2 + c.x - x, r * 2 + c.y - y, c.data.r + 5, 0, Math.PI * 2);
+        tempCtxMask.fill();
     });
 
 
@@ -322,10 +328,14 @@ stars.push(star(MAP_WIDTH / 2, MAP_HEIGHT / 2, 25));
 
 //?UPDATE
 const update = () => {
+    //Build quad tree for current objects
+    var clouds = cloudClusters.map(cc => cc.data.clouds).reduce((a, b) => a.concat(b), []);
+    quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers).concat(stars));
+
     //Handle pointing currently rotating emitter at mouse
     if (isRotating) {
         if (mKeys.get('shift')) {
-            var s = 0.01 * scale;
+            var s = 0.02;
             var deltaPos = { x: (mPos.x - target.x) * s, y: (mPos.y - target.y) * s };
             rotatingEmitter.data.dir = angleBetw(rotatingEmitter, { x: target.x + deltaPos.x, y: target.y + deltaPos.y });
         } else {
@@ -335,7 +345,6 @@ const update = () => {
         rotatingEmitter.data.calcRay = true;
     }
 
-
     //Create a quadtree specifically for ray points
     var rayPoints = emitters.map(em => { em.data.ray.map(p => p.emitter = em); return em.data.ray }).reduce((a, b) => a.concat(b), []);
     var rayQTree = qTree(MAP_WIDTH, MAP_HEIGHT, rayPoints);
@@ -343,7 +352,7 @@ const update = () => {
     //Handle moving currently moving attractor to mouse
     if (isMoving) {
         if (mKeys.get('shift')) {
-            var s = 0.01 * scale;
+            var s = 0.02;
             target = { x: (mPos.x - fineMidpoint.x) * s + fineMidpoint.x, y: (mPos.y - fineMidpoint.y) * s + fineMidpoint.y };
         } else {
             target = mPos;
@@ -401,9 +410,6 @@ const update = () => {
         }
 
     }
-
-    var clouds = cloudClusters.map(cc => cc.data.clouds).reduce((a, b) => a.concat(b), []);
-    quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers).concat(stars));
 
     //Populate rays list
     emitters.filter(em => em.data.calcRay).forEach(em => {
@@ -509,16 +515,16 @@ const update = () => {
         }
     }
 
+    efficiency = lerp(efficiency, emitters.length == 0 ? 1 : connectedEms.length / emitters.length, 0.1);
+    UI_OBJS.get("eff").style.bottom = lerp(0, 98, efficiency) + "%";
 
-
-    mKeysPrev = new Map(mKeys);
     prevMPos = mPos;
     prevClick = click;
-    if (!paused) {
-        frame += 1;
-        scale = Math.max(0.5, startScale * Math.pow(0.95, frame / 1000));
-        calcScaleDependants();
-    }
+
+    frame += 1;
+    scale = Math.max(0.5, startScale * Math.pow(0.95, frame / 1000));
+    calcScaleDependants();
+
     justPlacedAttractor = false;
 }
 
@@ -617,7 +623,13 @@ window.onkeyup = (e) => {
 
 //?LOOP
 setInterval(() => {
-    update();
+    if (mKeys.get('escape') && !mKeysPrev.get('escape')) {
+        onPause();
+    }
+    if (!paused) {
+        update();
+    }
+    mKeysPrev = new Map(mKeys);
     render();
 }, 1000 / 60);
 
@@ -627,10 +639,12 @@ const onPause = () => {
 }
 
 const placeAttractor = () => {
-    target = mPos;
-    var newAttractor = attractor(target.x, target.y);
-    attractors.push(newAttractor);
-    isMoving = true;
-    movingAttractor = newAttractor;
-    justPlacedAttractor = true;
+    if (!paused) {
+        target = mPos;
+        var newAttractor = attractor(target.x, target.y);
+        attractors.push(newAttractor);
+        isMoving = true;
+        movingAttractor = newAttractor;
+        justPlacedAttractor = true;
+    }
 };
