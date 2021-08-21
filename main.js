@@ -62,6 +62,8 @@ var tmpCanv = (width, height) => {
     return { canv: r, ctx: r.getContext("2d") };
 }
 
+var clamp = (n, min, max) => { return Math.min(Math.max(n, min), max); }
+
 //?Perlin
 class Grad {
     constructor(x, y, z) {
@@ -192,6 +194,7 @@ const CLOUD_COLOURS = ["f72585", "b5179e", "7209b7", "560bad", "480ca8", "3a0ca3
 
 const UI_OBJS = new Map();
 UI_OBJS.set("eff", document.getElementById("dsp-eff-val"));
+UI_OBJS.set("via", document.getElementById("dsp-via-val"));
 //?GAMEDATA
 var emitters = [];
 var lastEmitSpawn = -EMITTER_RATE;
@@ -229,7 +232,15 @@ var wOff;
 var scrnRect;
 
 var efficiency = 1;
+var lerpEff = 1;
 var viability = 1;
+
+var attInv = 0;
+var emiInv = 0;
+var recInv = 0;
+
+var currentConstruction = "emitter";
+var constructionProgress = 0;
 
 const calcScaleDependants = () => {
     wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
@@ -515,8 +526,11 @@ const update = () => {
         }
     }
 
-    efficiency = lerp(efficiency, emitters.length == 0 ? 1 : connectedEms.length / emitters.length, 0.1);
-    UI_OBJS.get("eff").style.bottom = lerp(0, 98, efficiency) + "%";
+    efficiency = clamp(connectedEms.length / emitters.length, 0, 1);
+    lerpEff = lerp(lerpEff, efficiency, 0.05);
+    UI_OBJS.get("eff").style.bottom = lerp(0, 98, lerpEff) + "%";
+    viability = clamp(viability + (efficiency >= 0.5 ? 0.005 : -0.001), 0, 1);
+    UI_OBJS.get("via").style.bottom = lerp(0, 98, viability) + "%";
 
     prevMPos = mPos;
     prevClick = click;
