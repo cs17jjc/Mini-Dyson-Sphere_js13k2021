@@ -19,7 +19,7 @@ const cloud = (x, y, r, c) => { return defObejct("cloud", x, y, { r, c }); }
 
 const cloudCluster = (x, y, r, clouds, img) => { return defObejct("cloudCluster", x, y, { r, clouds, img }); }
 
-const reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10, power: false }); }
+const reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10, power: false, activated: false }); }
 
 const star = (x, y, r) => { return defObejct("star", x, y, { r }); }
 
@@ -186,6 +186,9 @@ const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
 const MOVE_SPEED = 0.3;
 const EMITTER_BAND = 40;
+const EMITTER_RATE = 400;
+const RECIVER_RATE = 400;
+
 //Radius
 const EMITTER_LAYOUT = [5, 10, 15];
 //[min radius,max radius, number, minR, maxR]
@@ -199,9 +202,10 @@ const GRAV_RECT = { x: -50, y: -50, w: 100, h: 100 };
 const CLOUD_COLOURS = ["f72585", "b5179e", "7209b7", "560bad", "480ca8", "3a0ca3", "3f37c9", "4361ee", "4895ef", "4cc9f0"];
 
 const UI_OBJS = new Map();
-UI_OBJS.set("eff", document.getElementById("dsp-eff-val"));
 UI_OBJS.set("via", document.getElementById("dsp-via-val"));
 UI_OBJS.set("bh", document.getElementById("btn-bh"));
+UI_OBJS.set("dsp", document.getElementById("dsp-prog"));
+UI_OBJS.set("scrn", document.getElementById("screen"));
 //?GAMEDATA
 var emitters = [];
 var lastEmitSpawn = 0;
@@ -218,6 +222,7 @@ var cloudClusters = [];
 
 var recivers = [];
 var lastRecSpawn = 0;
+var reciverSpwnRect = { x: 0, y: 0, w: 0, h: 0 };
 
 var stars = [];
 
@@ -235,17 +240,18 @@ var targetValid = false;
 
 var startScale = 1.5;
 var scale = startScale;
+var maxScale = startScale;
 var wOff;
 var scrnRect;
 
-var efficiency = 1;
-var lerpEff = 1;
 var viability = 1;
 
 var attractorCount = 0;
 
 var nextComponent = "emitter"
 var componentProgress = 0;
+
+var failed = false;
 
 const calcScaleDependants = () => {
     wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
@@ -402,51 +408,44 @@ const update = () => {
         });
     }
 
-    componentProgress += 0.1 * (connectedEms.length / EMITTER_LAYOUT.reduce((a, b) => a + b, 0));
-
-    if (componentProgress >= 1) {
-        switch (nextComponent) {
-            case 'emitter':
-                var counter = 0;
-                while (counter < 50 && emittersInBand <= EMITTER_LAYOUT[emitterBand]) {
-                    lastEmitSpawn = frame;
-                    var ang = rnd(0, Math.PI * 2);
-                    var r = emitterHeight;
-                    var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
-                    var nextEm = emitter(nextP.x, nextP.y, ang, frame);
-                    var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 });
-                    if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r * 1.2)) {
-                        emitters.push(nextEm);
-                        emittersInBand += 1;
-                        break;
-                    }
-                    counter++;
-                }
-                if (emitterBand < EMITTER_LAYOUT.length && emittersInBand >= EMITTER_LAYOUT[emitterBand]) {
-                    emitterHeight += EMITTER_BAND;
-                    emittersInBand = 0;
-                    emitterBand++;
-                }
-                nextComponent = rndPick(['emitter', 'reciver', 'reciver', 'reciver']);
+    if (frame - lastEmitSpawn >= EMITTER_RATE) {
+        var counter = 0;
+        while (counter < 50 && emittersInBand <= EMITTER_LAYOUT[emitterBand]) {
+            var ang = rnd(0, Math.PI * 2);
+            var r = emitterHeight;
+            var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
+            var nextEm = emitter(nextP.x, nextP.y, ang, frame);
+            var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 });
+            if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r * 1.2)) {
+                emitters.push(nextEm);
+                emittersInBand += 1;
+                lastEmitSpawn = frame;
                 break;
-            case 'reciver':
-                var counter = 0;
-                var noGoRadius = 80;
-                while (true) {
-                    var nextP = { x: rnd(scrnRect.x, scrnRect.x + scrnRect.w), y: rnd(scrnRect.y, scrnRect.y + scrnRect.h) };
-                    var nextR = reciver(nextP.x, nextP.y);
-                    var near = queryTree(quadTree, { x: nextR.x - 150, y: nextR.y - 150, w: 300, h: 300 });
-                    if (!near.some(o => dist(o, nextR) < o.data.r + nextR.data.r + (o.type == "reciver" ? noGoRadius : 10)) && dist(nextR, stars[0]) > 250) {
-                        recivers.push(nextR);
-                        lastRecSpawn = frame;
-                        break;
-                    }
-                    noGoRadius = Math.max(10, noGoRadius - 1);
-                }
-                nextComponent = rndPick(['emitter', 'emitter', 'emitter', 'reciver']);
-                break;
+            }
+            counter++;
         }
-        componentProgress = 0;
+        if (emitterBand < EMITTER_LAYOUT.length && emittersInBand >= EMITTER_LAYOUT[emitterBand]) {
+            emitterHeight += EMITTER_BAND;
+            emittersInBand = 0;
+            emitterBand++;
+        }
+    }
+
+
+    if (frame - lastRecSpawn >= RECIVER_RATE && emitters.length > recivers.length) {
+        var counter = 0;
+        reciverSpwnRect = { x: scrnRect.x + 30, y: scrnRect.y + 20, w: scrnRect.w - 60, h: scrnRect.h - 40 };
+        while (counter < 50) {
+            var nextP = { x: rnd(reciverSpwnRect.x, reciverSpwnRect.x + reciverSpwnRect.w), y: rnd(reciverSpwnRect.y, reciverSpwnRect.y + reciverSpwnRect.h) };
+            var nextR = reciver(nextP.x, nextP.y);
+            var near = queryTree(quadTree, { x: nextR.x - 150, y: nextR.y - 150, w: 300, h: 300 });
+            if (!near.some(o => dist(o, nextR) < o.data.r + nextR.data.r + (o.type == "reciver" ? 80 : 10)) && dist(nextR, stars[0]) > 250) {
+                recivers.push(nextR);
+                lastRecSpawn = frame;
+                break;
+            }
+            counter++;
+        }
     }
 
     //Populate rays list
@@ -517,6 +516,9 @@ const update = () => {
             if (connectedEms.includes(p.emitter) || r.data.power) return;
             connectedEms.push(p.emitter);
             r.data.power = true;
+            if (!r.data.activated) {
+                r.data.activated = true;
+            }
         });
     });
 
@@ -553,18 +555,18 @@ const update = () => {
         }
     }
 
-    UI_OBJS.get("bh").innerHTML = attractorCount + " Black Holes";
-    efficiency = clamp(connectedEms.length / emitters.length, 0, 1);
-    lerpEff = lerp(lerpEff, efficiency, 0.05);
-    UI_OBJS.get("eff").style.bottom = lerp(0, 98, lerpEff) + "%";
-    viability = clamp(viability + (efficiency >= 0.5 ? 0.005 : -0.001), 0, 1);
+    UI_OBJS.get("bh").innerHTML = attractorCount + "<br> Black Holes <br> <span style=\"font-size:0.8em;\">(Click To Place)<span>";
+    UI_OBJS.get("dsp").innerHTML = emitters.length + "/" + EMITTER_LAYOUT.reduce((a, b) => a + b, 0) + "<br> Satelites";
+
+    viability = clamp(viability - (emitters.length - connectedEms.length) * 0.0005, 0, 1);
     UI_OBJS.get("via").style.bottom = lerp(0, 98, viability) + "%";
 
     prevMPos = mPos;
     prevClick = click;
 
     frame += 1;
-    scale = Math.max(0.5, startScale * Math.pow(0.95, frame / 1000));
+    maxScale = Math.min(maxScale, startScale * Math.pow(0.95, connectedEms.length * 0.5));
+    scale = lerp(scale, Math.max(0.5, maxScale), 0.01);
     calcScaleDependants();
 
     justPlacedAttractor = false;
@@ -631,6 +633,10 @@ const render = () => {
         ctx.fill();
     });
 
+    ctx.strokeStyle = "#00FF00";
+    ctx.strokeWidth = 10;
+    ctx.strokeRect(reciverSpwnRect.x, reciverSpwnRect.y, reciverSpwnRect.w, reciverSpwnRect.h);
+
     ctx.resetTransform();
 }
 
@@ -663,6 +669,7 @@ window.onkeyup = (e) => {
     mKeys.set(e.key.toLowerCase(), false);
 }
 
+UI_OBJS.get("scrn").classList.remove("show");
 //?LOOP
 setInterval(() => {
     if (mKeys.get('escape') && !mKeysPrev.get('escape')) {

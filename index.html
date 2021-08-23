@@ -2,29 +2,25 @@
 
 <head>
     <title>Mini-Dyson Sphere</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
     <div id="c">
+        <div id="screen" class="show">Loading...</div>
         <canvas id="canvas" width="960" height="540"></canvas>
         <div id="btn-pause" onclick="onPause();">⏸️</div>
-        <div id="btn-bh" onclick="placeAttractor();">Black Hole</div>
-        <div id="dsp-eff-cont">
-            <div id="dsp-eff" class="dsp-txt-vert">
-                Efficiency
-            </div>
-            <div id="dsp-eff-val"></div>
-        </div>
+        <div id="btn-bh" class="btn" onclick="placeAttractor();">Black Hole</div>
+        <div id="dsp-prog" class="btn">Dyson Sats:</div>
         <div id="dsp-via-cont">
             <div id="dsp-via" class="dsp-txt-vert">
-                Public Opinion
+                Worker Support
             </div>
             <div id="dsp-via-val"></div>
         </div>
     </div>
 
     <script src="main.js"></script>
-    <link rel="stylesheet" href="style.css">
 </body>
 
 </html>

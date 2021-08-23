@@ -1,120 +1,132 @@
-body {
-    overflow: hidden;
-    align-content: center;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -khtml-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-}
-
-body.no-anim * {
-    animation-play-state: paused !important;
-    transition: none !important;
-}
-
-#canvas {
-    background-color: #000;
-    position: absolute;
-    left: 0%;
-    top: 0%;
-    width: 960px;
-    height: 540px;
-}
-
-#c {
-    background-color: black;
-    position: relative;
-    overflow: hidden;
-    width: 960px;
-    height: 540px;
-    left: calc(50% - 960px / 2);
-}
-
-#btn-pause {
-    position: relative;
-    font-size: 2em;
-    top: 1%;
-    left: 96%;
-    cursor: pointer;
-    z-index: 2;
-}
-
-#btn-bh {
-    position: relative;
-    font-size: 1em;
-    top: 88%;
-    left: 46.5%;
-    cursor: pointer;
-    background-color: white;
-    z-index: 2;
-    display: inline-block
-}
-
-#dsp-eff-cont {
-    position: absolute;
-    top: 10%;
-    left: 97%;
-    width: 2%;
-    height: 80%;
-}
-
-#dsp-eff {
-    background-color: blue;
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    border-radius: 10px;
-    border-color: gray;
-    border-width: 2px;
-    border-style: solid;
-}
-
-#dsp-eff-val {
-    background-color: white;
-    position: absolute;
-    bottom: 99%;
-    left: -15%;
-    width: 150%;
-    height: 1%;
-    border-radius: 2px;
-}
-
-#dsp-via-cont {
-    position: absolute;
-    top: 10%;
-    left: 93%;
-    width: 2%;
-    height: 80%;
-}
-
-#dsp-via {
-    background-color: blue;
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    border-radius: 10px;
-    border-color: gray;
-    border-width: 2px;
-    border-style: solid;
-}
-
-#dsp-via-val {
-    background-color: white;
-    position: absolute;
-    bottom: 99%;
-    left: -15%;
-    width: 150%;
-    height: 1%;
-    border-radius: 2px;
-}
-
-.dsp-txt-vert {
-    writing-mode: vertical-rl;
-    text-orientation: upright;
-    text-align: center;
-    letter-spacing: .5em;
-    font-family: Verdana, sans-serif;
-    font-weight: bold;
-}
+    body {
+        overflow: hidden;
+        align-content: center;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+    }
+    
+    body.no-anim * {
+        animation-play-state: paused !important;
+        transition: none !important;
+    }
+    
+    #canvas {
+        background-color: #000;
+        position: absolute;
+        left: 0%;
+        top: 0%;
+        width: 960px;
+        height: 540px;
+    }
+    
+    #c {
+        background-color: black;
+        position: relative;
+        overflow: hidden;
+        width: 960px;
+        height: 540px;
+        left: calc(50% - 960px / 2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    #btn-pause {
+        position: absolute;
+        font-size: 2em;
+        top: 1%;
+        left: 96.5%;
+        cursor: pointer;
+        z-index: 2;
+    }
+    
+    #btn-bh {
+        left: -14%;
+        top: 10%;
+        cursor: pointer;
+    }
+    
+    #dsp-prog {
+        left: -11%;
+        top: 30%;
+    }
+    
+    .btn:hover {
+        left: 0% !important;
+    }
+    
+    .btn {
+        position: absolute;
+        font-size: 1em;
+        background-color: rgba(0, 50, 0, 0.9);
+        z-index: 2;
+        display: inline-block;
+        text-align: center;
+        color: rgba(0, 255, 0, 1);
+        border-radius: 8px 2px 8px 8px;
+        border-color: rgba(0, 255, 0, 1);
+        border-width: 5px;
+        border-style: solid;
+        padding: 10px 20px;
+        transition: left 0.5s ease-in-out;
+    }
+    
+    #dsp-via-cont {
+        position: absolute;
+        top: 10%;
+        left: 97%;
+        width: 2%;
+        height: 80%;
+    }
+    
+    #dsp-via {
+        background-image: linear-gradient(limegreen, yellow, red);
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 10px;
+        border-color: gray;
+        border-width: 2px;
+        border-style: solid;
+    }
+    
+    #dsp-via-val {
+        background-color: white;
+        position: absolute;
+        bottom: 99%;
+        left: -15%;
+        width: 150%;
+        height: 1%;
+        border-radius: 2px;
+    }
+    
+    .dsp-txt-vert {
+        writing-mode: vertical-rl;
+        text-orientation: upright;
+        text-align: center;
+        letter-spacing: .5em;
+        font-family: Verdana, sans-serif;
+        font-weight: bold;
+    }
+    
+    #screen {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background-color: black;
+        text-align: center;
+        color: white;
+        opacity: 0;
+        transition: opacity 0.5s ease-in-out;
+        z-index: -1;
+    }
+    
+    #screen.show {
+        display: block;
+        opacity: 1;
+        z-index: 5;
+    }
