@@ -184,20 +184,27 @@ const queryTree = (tree, rect) => {
 const PHOTON_MASS = 0.1; //Yeah I know this sounds odd 
 const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
-const EMITTER_RATE = 600;
-const EMITTER_SPEED = 0.3;
+const MOVE_SPEED = 0.3;
 const EMITTER_BAND = 40;
-const EMITTER_LAYOUT = [5, 10, 15]
+//Radius
+const EMITTER_LAYOUT = [5, 10, 15];
+//[min radius,max radius, number, minR, maxR]
+const CLOUD_LAYOUT = [
+    [180, 180, 6, 20, 20],
+    [360, 360, 8, 50, 50],
+    [540, 540, 10, 80, 80],
+    [680, 540, 10, 100, 100],
+];
 const GRAV_RECT = { x: -50, y: -50, w: 100, h: 100 };
-const RECIVER_RATE = 600;
 const CLOUD_COLOURS = ["f72585", "b5179e", "7209b7", "560bad", "480ca8", "3a0ca3", "3f37c9", "4361ee", "4895ef", "4cc9f0"];
 
 const UI_OBJS = new Map();
 UI_OBJS.set("eff", document.getElementById("dsp-eff-val"));
 UI_OBJS.set("via", document.getElementById("dsp-via-val"));
+UI_OBJS.set("bh", document.getElementById("btn-bh"));
 //?GAMEDATA
 var emitters = [];
-var lastEmitSpawn = -EMITTER_RATE;
+var lastEmitSpawn = 0;
 var setCalcEms = [];
 var connectedEms = [];
 var emitterHeight = 40;
@@ -210,7 +217,7 @@ var justPlacedAttractor = false;
 var cloudClusters = [];
 
 var recivers = [];
-var lastRecSpawn = -RECIVER_RATE;
+var lastRecSpawn = 0;
 
 var stars = [];
 
@@ -235,12 +242,10 @@ var efficiency = 1;
 var lerpEff = 1;
 var viability = 1;
 
-var attInv = 0;
-var emiInv = 0;
-var recInv = 0;
+var attractorCount = 0;
 
-var currentConstruction = "emitter";
-var constructionProgress = 0;
+var nextComponent = "emitter"
+var componentProgress = 0;
 
 const calcScaleDependants = () => {
     wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
@@ -309,14 +314,7 @@ const genCloudCluster = (x, y, r) => {
 stars.push(star(MAP_WIDTH / 2, MAP_HEIGHT / 2, 25));
 
 //Generate clouds
-//[min radius,max radius, number, minR, maxR]
-[
-
-    [180, 180, 6, 20, 20],
-    [360, 360, 8, 50, 50],
-    [540, 540, 10, 80, 80],
-    [680, 540, 10, 100, 100],
-].forEach(layout => {
+CLOUD_LAYOUT.forEach(layout => {
     for (var i = 0; i < layout[2]; i++) {
         var counter = 0;
         var hasPlace = false;
@@ -335,6 +333,25 @@ stars.push(star(MAP_WIDTH / 2, MAP_HEIGHT / 2, 25));
         }
     }
 });
+
+//Create first emitter - reciver pair
+
+var recR = (CLOUD_LAYOUT[0][0] + CLOUD_LAYOUT[0][1]) / 2;
+var ang;
+
+var createdObj = false;
+while (!createdObj) {
+    ang = rnd(0, Math.PI * 2);
+    var recP = { x: MAP_WIDTH / 2 + Math.cos(ang) * recR, y: MAP_HEIGHT / 2 + Math.sin(ang) * recR };
+    var newReciver = reciver(recP.x, recP.y);
+    if (!cloudClusters.reduce((a, b) => a.concat(b.data.clouds), []).some(c => { return dist(c, recP) < c.data.r + newReciver.data.r; })) {
+        createdObj = true;
+        recivers.push(newReciver);
+    }
+}
+var emitP = { x: MAP_WIDTH / 2 + Math.cos(ang) * emitterHeight, y: MAP_HEIGHT / 2 + Math.sin(ang) * emitterHeight };
+emitters.push(emitter(emitP.x, emitP.y, ang, frame));
+
 
 
 //?UPDATE
@@ -372,8 +389,8 @@ const update = () => {
 
         var near = queryTree(quadTree, { x: target.x - 100, y: target.y - 100, w: 200, h: 200 });
         targetValid = !near.filter(o => o != movingAttractor).some(o => { return dist(o, target) < o.data.r + movingAttractor.data.r; });
-        movingAttractor.x = lerp(movingAttractor.x, target.x, EMITTER_SPEED);
-        movingAttractor.y = lerp(movingAttractor.y, target.y, EMITTER_SPEED);
+        movingAttractor.x = lerp(movingAttractor.x, target.x, MOVE_SPEED);
+        movingAttractor.y = lerp(movingAttractor.y, target.y, MOVE_SPEED);
 
         var pointsInRange = queryTree(rayQTree, { x: movingAttractor.x + GRAV_RECT.x, y: movingAttractor.y + GRAV_RECT.y, w: GRAV_RECT.w, h: GRAV_RECT.h });
         setCalcEms.forEach(em => em.data.calcRay = true);
@@ -385,41 +402,51 @@ const update = () => {
         });
     }
 
-    //Spawn new emitter
-    if (frame - lastEmitSpawn >= EMITTER_RATE) {
-        var counter = 0;
-        while (counter < 50 && emittersInBand <= EMITTER_LAYOUT[emitterBand]) {
-            lastEmitSpawn = frame;
-            var ang = rnd(0, Math.PI * 2);
-            var r = emitterHeight;
-            var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
-            var nextEm = emitter(nextP.x, nextP.y, ang, frame);
-            var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 });
-            if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r * 1.2)) {
-                emitters.push(nextEm);
-                emittersInBand += 1;
+    componentProgress += 0.1 * (connectedEms.length / EMITTER_LAYOUT.reduce((a, b) => a + b, 0));
+
+    if (componentProgress >= 1) {
+        switch (nextComponent) {
+            case 'emitter':
+                var counter = 0;
+                while (counter < 50 && emittersInBand <= EMITTER_LAYOUT[emitterBand]) {
+                    lastEmitSpawn = frame;
+                    var ang = rnd(0, Math.PI * 2);
+                    var r = emitterHeight;
+                    var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
+                    var nextEm = emitter(nextP.x, nextP.y, ang, frame);
+                    var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 });
+                    if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r * 1.2)) {
+                        emitters.push(nextEm);
+                        emittersInBand += 1;
+                        break;
+                    }
+                    counter++;
+                }
+                if (emitterBand < EMITTER_LAYOUT.length && emittersInBand >= EMITTER_LAYOUT[emitterBand]) {
+                    emitterHeight += EMITTER_BAND;
+                    emittersInBand = 0;
+                    emitterBand++;
+                }
+                nextComponent = rndPick(['emitter', 'reciver', 'reciver', 'reciver']);
                 break;
-            }
-            counter++;
+            case 'reciver':
+                var counter = 0;
+                var noGoRadius = 80;
+                while (true) {
+                    var nextP = { x: rnd(scrnRect.x, scrnRect.x + scrnRect.w), y: rnd(scrnRect.y, scrnRect.y + scrnRect.h) };
+                    var nextR = reciver(nextP.x, nextP.y);
+                    var near = queryTree(quadTree, { x: nextR.x - 150, y: nextR.y - 150, w: 300, h: 300 });
+                    if (!near.some(o => dist(o, nextR) < o.data.r + nextR.data.r + (o.type == "reciver" ? noGoRadius : 10)) && dist(nextR, stars[0]) > 250) {
+                        recivers.push(nextR);
+                        lastRecSpawn = frame;
+                        break;
+                    }
+                    noGoRadius = Math.max(10, noGoRadius - 1);
+                }
+                nextComponent = rndPick(['emitter', 'emitter', 'emitter', 'reciver']);
+                break;
         }
-        if (emitterBand < EMITTER_LAYOUT.length && emittersInBand >= EMITTER_LAYOUT[emitterBand]) {
-            emitterHeight += EMITTER_BAND;
-            emittersInBand = 0;
-            emitterBand++;
-        }
-    }
-
-
-    if (frame - lastRecSpawn >= RECIVER_RATE && emitters.length > recivers.length) {
-
-        var nextP = { x: rnd(scrnRect.x, scrnRect.x + scrnRect.w), y: rnd(scrnRect.y, scrnRect.y + scrnRect.h) };
-        var nextR = reciver(nextP.x, nextP.y);
-        var near = queryTree(quadTree, { x: nextR.x - 150, y: nextR.y - 150, w: 300, h: 300 });
-        if (!near.some(o => dist(o, nextR) < o.data.r + nextR.data.r + (o.type == "reciver" ? 80 : 10)) && dist(nextR, stars[0]) > 250) {
-            recivers.push(nextR);
-            lastRecSpawn = frame;
-        }
-
+        componentProgress = 0;
     }
 
     //Populate rays list
@@ -526,6 +553,7 @@ const update = () => {
         }
     }
 
+    UI_OBJS.get("bh").innerHTML = attractorCount + " Black Holes";
     efficiency = clamp(connectedEms.length / emitters.length, 0, 1);
     lerpEff = lerp(lerpEff, efficiency, 0.05);
     UI_OBJS.get("eff").style.bottom = lerp(0, 98, lerpEff) + "%";
@@ -653,7 +681,7 @@ const onPause = () => {
 }
 
 const placeAttractor = () => {
-    if (!paused) {
+    if (!paused && attractorCount > 0) {
         target = mPos;
         var newAttractor = attractor(target.x, target.y);
         attractors.push(newAttractor);

@@ -109,3 +109,12 @@ body.no-anim * {
     height: 1%;
     border-radius: 2px;
 }
+
+.dsp-txt-vert {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    text-align: center;
+    letter-spacing: .5em;
+    font-family: Verdana, sans-serif;
+    font-weight: bold;
+}
