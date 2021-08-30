@@ -11,7 +11,7 @@ window.onresize = (e) => { dspCanvRect = getBoundRect(); };
 //?OBJECTS
 const defObejct = (type, x, y, data) => { return { type, x, y, data }; }
 
-const emitter = (x, y, dir, frameSpawned) => { return defObejct("emitter", x, y, { dir, r: 8, ray: [], calcRay: true, frameSpawned }); }
+const emitter = (x, y, dir, frameSpawned, angOrigin) => { return defObejct("emitter", x, y, { dir, r: 16, ray: [], calcRay: true, frameSpawned, angOrigin }); }
 
 const attractor = (x, y) => { return defObejct("attractor", x, y, { r: 6, m: 200 }); }
 
@@ -19,9 +19,11 @@ const cloud = (x, y, r, c) => { return defObejct("cloud", x, y, { r, c }); }
 
 const cloudCluster = (x, y, r, clouds, img) => { return defObejct("cloudCluster", x, y, { r, clouds, img }); }
 
-const reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10, power: false, activated: false }); }
+const reciver = (x, y) => { return defObejct("reciver", x, y, { r: 10, power: false, activated: false, lastVia: 0, running: false }); }
 
 const star = (x, y, r) => { return defObejct("star", x, y, { r }); }
+
+const indicator = (x, y, vx, vy, txt, lifetime, frameCreated, c) => { return defObejct("indicator", x, y, { vx, vy, txt, lifetime, frameCreated, c }); }
 
 //is point in rectangle
 const isPinR = (obj, rect) => {
@@ -185,16 +187,14 @@ const PHOTON_MASS = 0.1; //Yeah I know this sounds odd
 const MAP_WIDTH = 960 * 2;
 const MAP_HEIGHT = 540 * 2;
 const MOVE_SPEED = 0.3;
-const EMITTER_BAND = 40;
-const EMITTER_RATE = 400;
-const RECIVER_RATE = 400;
+const EMITTER_BAND = 60;
 
 //Radius
 const EMITTER_LAYOUT = [5, 10, 15];
 //[min radius,max radius, number, minR, maxR]
 const CLOUD_LAYOUT = [
-    [180, 180, 6, 20, 20],
-    [360, 360, 8, 50, 50],
+    [200, 200, 6, 20, 20],
+    [400, 400, 8, 50, 50],
     [540, 540, 10, 80, 80],
     [680, 540, 10, 100, 100],
 ];
@@ -206,14 +206,63 @@ UI_OBJS.set("via", document.getElementById("dsp-via-val"));
 UI_OBJS.set("bh", document.getElementById("btn-bh"));
 UI_OBJS.set("dsp", document.getElementById("dsp-prog"));
 UI_OBJS.set("scrn", document.getElementById("screen"));
+
+const configCtx = (ctx, tmpR) => {
+    ctx.translate(tmpR, tmpR);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle"
+}
+
+const regPoly = (ctx, n, x, y, r) => {
+    ctx.beginPath();
+    gArr(n).forEach(i => {
+        ctx.lineTo(x + r * Math.cos(i * 2 * Math.PI / n), y + r * Math.sin(i * 2 * Math.PI / n));
+    });
+    ctx.closePath();
+}
+
+const IMGS = new Map();
+var tmpR = emitter(0, 0, 0, 0, 0).data.r;
+var tmpCanvCtx = tmpCanv(tmpR * 3, tmpR * 3);
+configCtx(tmpCanvCtx.ctx, tmpR * 3 * 0.5);
+
+tmpCanvCtx.ctx.fillStyle = "blue";
+regPoly(tmpCanvCtx.ctx, 6, 0, 0, tmpR * 0.8);
+tmpCanvCtx.ctx.fill();
+
+
+tmpCanvCtx.ctx.lineWidth = 1;
+tmpCanvCtx.ctx.strokeStyle = "gray";
+regPoly(tmpCanvCtx.ctx, 6, 0, 0, tmpR * 0.8 - 2);
+tmpCanvCtx.ctx.stroke();
+
+tmpCanvCtx.ctx.strokeStyle = "gray";
+regPoly(tmpCanvCtx.ctx, 6, 0, 0, tmpR * 0.8 + 2);
+tmpCanvCtx.ctx.stroke();
+
+tmpCanvCtx.ctx.lineWidth = 2;
+tmpCanvCtx.ctx.strokeStyle = "white";
+regPoly(tmpCanvCtx.ctx, 6, 0, 0, tmpR * 0.8);
+tmpCanvCtx.ctx.stroke();
+
+
+IMGS.set("emtr", tmpCanvCtx.canv);
+
+const { canv: starCanv, ctx: starCtx } = tmpCanv(MAP_WIDTH, MAP_HEIGHT);
+gArr(500).forEach(i => {
+    starCtx.fillStyle = rndPick(["white", "yellow", "blue", "red", "orange"])
+    var s = rnd(1, 3);
+    starCtx.fillRect(rnd(0, MAP_WIDTH), rnd(0, MAP_HEIGHT), s, s);
+});
 //?GAMEDATA
 var emitters = [];
 var lastEmitSpawn = 0;
 var setCalcEms = [];
 var connectedEms = [];
-var emitterHeight = 40;
+var emitterHeight = 45;
 var emittersInBand = 0;
 var emitterBand = 0;
+var emitterRate = 400;
 
 var attractors = [];
 var justPlacedAttractor = false;
@@ -221,10 +270,15 @@ var justPlacedAttractor = false;
 var cloudClusters = [];
 
 var recivers = [];
+var reciverRate = 400;
 var lastRecSpawn = 0;
 var reciverSpwnRect = { x: 0, y: 0, w: 0, h: 0 };
+var reciverViabilityRate = 200;
+var reciverViabilityIncr = 0.02;
 
 var stars = [];
+
+var indicators = [];
 
 var quadTree;
 
@@ -244,14 +298,19 @@ var maxScale = startScale;
 var wOff;
 var scrnRect;
 
-var viability = 1;
+var viability = 0.5;
+var lerpVia = viability;
+var lastViaUpdate = 0;
 
-var attractorCount = 0;
+var attractorCount = 3;
+var attractorChance = 0.1;
 
 var nextComponent = "emitter"
 var componentProgress = 0;
 
 var failed = false;
+
+var completed = false;
 
 const calcScaleDependants = () => {
     wOff = { x: MAP_WIDTH / 2 - (rCanv.width * scale) - rCanv.width / 2, y: MAP_HEIGHT / 2 - (rCanv.height * scale) - rCanv.height / 2 };
@@ -342,8 +401,9 @@ CLOUD_LAYOUT.forEach(layout => {
 
 //Create first emitter - reciver pair
 
-var recR = (CLOUD_LAYOUT[0][0] + CLOUD_LAYOUT[0][1]) / 2;
+var recR = ((CLOUD_LAYOUT[0][0] + CLOUD_LAYOUT[0][1]) / 2) - 20;
 var ang;
+reciverSpwnRect = { x: scrnRect.x + 30, y: scrnRect.y + 20, w: scrnRect.w - 60, h: scrnRect.h - 40 };
 
 var createdObj = false;
 while (!createdObj) {
@@ -354,14 +414,24 @@ while (!createdObj) {
         createdObj = true;
         recivers.push(newReciver);
     }
+
 }
 var emitP = { x: MAP_WIDTH / 2 + Math.cos(ang) * emitterHeight, y: MAP_HEIGHT / 2 + Math.sin(ang) * emitterHeight };
-emitters.push(emitter(emitP.x, emitP.y, ang, frame));
+emitters.push(emitter(emitP.x, emitP.y, ang, frame, ang));
+emittersInBand++;
 
 
 
 //?UPDATE
 const update = () => {
+
+    //Update inditacors
+    indicators.forEach(i => {
+        i.x = i.x + i.data.vx;
+        i.y = i.y + i.data.vy;
+    });
+    indicators = indicators.filter(i => frame - i.data.frameCreated < i.data.lifetime);
+
     //Build quad tree for current objects
     var clouds = cloudClusters.map(cc => cc.data.clouds).reduce((a, b) => a.concat(b), []);
     quadTree = qTree(MAP_WIDTH, MAP_HEIGHT, attractors.concat(emitters).concat(clouds).concat(recivers).concat(stars));
@@ -408,15 +478,15 @@ const update = () => {
         });
     }
 
-    if (frame - lastEmitSpawn >= EMITTER_RATE) {
+    if (frame - lastEmitSpawn >= emitterRate) {
         var counter = 0;
-        while (counter < 50 && emittersInBand <= EMITTER_LAYOUT[emitterBand]) {
+        while (counter < 1 && emittersInBand <= EMITTER_LAYOUT[emitterBand]) {
             var ang = rnd(0, Math.PI * 2);
             var r = emitterHeight;
             var nextP = { x: MAP_WIDTH / 2 + Math.cos(ang) * r, y: MAP_HEIGHT / 2 + Math.sin(ang) * r };
-            var nextEm = emitter(nextP.x, nextP.y, ang, frame);
-            var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 });
-            if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r * 1.2)) {
+            var nextEm = emitter(nextP.x, nextP.y, ang, frame, ang);
+            var near = queryTree(quadTree, { x: nextP.x - 150, y: nextP.y - 150, w: 300, h: 300 }).filter(o => o.type != "star");
+            if (!near.some(o => dist(o, nextP) < o.data.r + nextEm.data.r + 5)) {
                 emitters.push(nextEm);
                 emittersInBand += 1;
                 lastEmitSpawn = frame;
@@ -432,7 +502,7 @@ const update = () => {
     }
 
 
-    if (frame - lastRecSpawn >= RECIVER_RATE && emitters.length > recivers.length) {
+    if (frame - lastRecSpawn >= reciverRate && emitters.length > recivers.length) {
         var counter = 0;
         reciverSpwnRect = { x: scrnRect.x + 30, y: scrnRect.y + 20, w: scrnRect.w - 60, h: scrnRect.h - 40 };
         while (counter < 50) {
@@ -520,7 +590,26 @@ const update = () => {
                 r.data.activated = true;
             }
         });
+
+        if (!r.data.power && r.data.running) { r.data.running = false; }
+
+        if (Math.random() < 0.005 && !r.data.running && r.data.power) {
+            r.data.running = true
+            r.data.lastVia = frame;
+        }
+
+        if (r.data.power && r.data.running && frame - r.data.lastVia >= reciverViabilityRate) {
+            viability += reciverViabilityIncr;
+            r.data.lastVia = frame;
+            indicators.push(indicator(r.x, r.y, 0, -1, "⚒", 50, frame, "#00FF00"));
+            if (Math.random() <= attractorChance) {
+                attractorCount++;
+            }
+            r.data.running = false;
+        }
     });
+
+    connectedEms.forEach(em => em.data.angOrigin += 0.01);
 
     if (click && !prevClick && !justPlacedAttractor) {
         //Handle emitter click
@@ -555,14 +644,20 @@ const update = () => {
         }
     }
 
-    UI_OBJS.get("bh").innerHTML = attractorCount + "<br> Black Holes <br> <span style=\"font-size:0.8em;\">(Click To Place)<span>";
+    UI_OBJS.get("bh").innerHTML = "" + attractorCount + "<br> Black Holes <br> <span style=\"font-size:0.8em;\">(Click To Place)</span>";
     UI_OBJS.get("dsp").innerHTML = emitters.length + "/" + EMITTER_LAYOUT.reduce((a, b) => a + b, 0) + "<br> Satelites";
 
-    viability = clamp(viability - (emitters.length - connectedEms.length) * 0.0005, 0, 1);
-    UI_OBJS.get("via").style.bottom = lerp(0, 98, viability) + "%";
+    if (frame - lastViaUpdate >= 100) {
+        viability = clamp(viability - (emitters.length - connectedEms.length) * 0.02, 0, 1);
+        recivers.filter(r => !r.data.power).forEach(e => indicators.push(indicator(e.x, e.y, 0, +1, "⚒", 50, frame, "#FF0000")));
+        lastViaUpdate = frame;
+    }
+    lerpVia = clamp(lerp(lerpVia, viability, 0.05), 0, 1);
+    UI_OBJS.get("via").style.bottom = lerp(0, 98, lerpVia) + "%";
+    failed = viability <= 0;
+    completed = emitters.length >= EMITTER_LAYOUT.reduce((a, b) => a + b, 0) && viability >= 1 && recivers.filter(r => r.data.power).length == recivers.length;
 
     prevMPos = mPos;
-    prevClick = click;
 
     frame += 1;
     maxScale = Math.min(maxScale, startScale * Math.pow(0.95, connectedEms.length * 0.5));
@@ -581,9 +676,41 @@ const render = () => {
     ctx.translate(wOff.x, wOff.y);
     ctx.scale(scale, scale);
 
+    ctx.drawImage(starCanv, 0, 0);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    //Render rays
+    emitters.forEach(obj => {
+
+        //Render rays
+        if (connectedEms.includes(obj)) {
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#FF00FFAA";
+            ctx.beginPath();
+            ctx.moveTo(obj.data.ray[0].x, obj.data.ray[0].y);
+            obj.data.ray.slice(1).forEach(p => {
+                ctx.lineTo(p.x, p.y);
+            });
+            ctx.stroke();
+        } else {
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(obj.data.ray[0].x, obj.data.ray[0].y);
+            obj.data.ray.slice(1).forEach(p => {
+                ctx.lineTo(p.x, p.y);
+            });
+            ctx.stroke();
+            ctx.closePath();
+            ctx.setLineDash([]);
+        }
+
+    });
     //Render emitters
     emitters.forEach(obj => {
         //Render rays
+        ctx.lineWidth = connectedEms.includes(obj) ? 3 : 1;
         ctx.strokeStyle = "#FFFFFF";
         ctx.beginPath();
         ctx.moveTo(obj.data.ray[0].x, obj.data.ray[0].y);
@@ -591,13 +718,23 @@ const render = () => {
             ctx.lineTo(p.x, p.y);
         });
         ctx.stroke();
-
+    });
+    emitters.forEach(obj => {
         //Render emitters
+        ctx.translate(obj.x, obj.y);
+        ctx.rotate(obj.data.angOrigin);
+
+        ctx.strokeStyle = "#FF0000";
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(obj.x, obj.y, obj.data.r, 0, 2 * Math.PI);
-        ctx.fillStyle = "#FF0000";
-        if (connectedEms.includes(obj)) ctx.fillStyle = "#FF8800";
-        ctx.fill();
+        ctx.arc(0, 0, obj.data.r, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        var img = IMGS.get("emtr");
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+        ctx.rotate(-obj.data.angOrigin);
+        ctx.translate(-obj.x, -obj.y);
     });
 
     //Render recivers
@@ -610,6 +747,14 @@ const render = () => {
             ctx.fillStyle = "#FFAA00";
         }
         ctx.fill();
+
+        if (obj.data.running) {
+            ctx.fillStyle = "#00000033";
+            ctx.beginPath();
+            ctx.moveTo(obj.x, obj.y);
+            ctx.arc(obj.x, obj.y, obj.data.r * 0.7, 0, lerp(0, 2 * Math.PI, (frame - obj.data.lastVia) / reciverViabilityRate));
+            ctx.fill();
+        }
     });
 
     //Render stars
@@ -633,7 +778,13 @@ const render = () => {
         ctx.fill();
     });
 
-    ctx.strokeStyle = "#00FF00";
+    //Render indicators
+    ctx.font = "20px Arial";
+    indicators.forEach(obj => {
+        ctx.fillStyle = obj.data.c;
+        ctx.fillText(obj.data.txt, obj.x, obj.y);
+    });
+
     ctx.strokeWidth = 10;
     ctx.strokeRect(reciverSpwnRect.x, reciverSpwnRect.y, reciverSpwnRect.w, reciverSpwnRect.h);
 
@@ -675,9 +826,24 @@ setInterval(() => {
     if (mKeys.get('escape') && !mKeysPrev.get('escape')) {
         onPause();
     }
-    if (!paused) {
+    var tempFailed = failed;
+    var tempCompleted = completed;
+    if (!paused && !failed && !completed) {
         update();
     }
+    if (!tempFailed && failed) {
+        UI_OBJS.get("scrn").innerHTML = "That wasn't very poggers of you comrade! <br> <span style=\"text-size:0.8em;\"> Click anywhere to restart.</span>";
+        UI_OBJS.get("scrn").classList.add("show");
+    }
+    if (!tempCompleted && completed) {
+        UI_OBJS.get("scrn").innerHTML = "Congratualtions comrade! <br> <span style=\"text-size:0.8em;\"> Click anywhere to replay.</span>";
+        UI_OBJS.get("scrn").classList.add("show");
+    }
+    if ((failed || completed) && click) {
+        window.location.reload();
+    }
+
+    prevClick = click;
     mKeysPrev = new Map(mKeys);
     render();
 }, 1000 / 60);
@@ -695,5 +861,6 @@ const placeAttractor = () => {
         isMoving = true;
         movingAttractor = newAttractor;
         justPlacedAttractor = true;
+        attractorCount--;
     }
 };

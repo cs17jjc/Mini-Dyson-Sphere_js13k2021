@@ -92,6 +92,7 @@
         border-color: gray;
         border-width: 2px;
         border-style: solid;
+        text-shadow: 0px 1px 1px #4d4d4d;
     }
     
     #dsp-via-val {
